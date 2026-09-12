@@ -292,64 +292,69 @@ export default function AssignTask() {
     setFormData((prev) => ({ ...prev, [name]: e.target.checked }));
   };
 
-  // Function to fetch options from master sheet
+  // Function to fetch options from Supabase tables (Whatsapp, Unique, Delegation)
   const fetchMasterSheetOptions = async () => {
     try {
-      const masterSheetName = "master";
+      const [wRes, uRes, dRes] = await Promise.all([
+        supabase.from('Whatsapp').select('*').order('Username', { ascending: true }),
+        supabase.from('Unique').select('*').limit(1000),
+        supabase.from('Delegation').select('*').limit(500)
+      ]);
 
-      const response = await fetch(`${APPS_SCRIPT_URL}?action=fetch&sheet=${encodeURIComponent(masterSheetName)}`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch master data: ${response.status}`);
-      }
+      const wData = wRes.data || [];
+      const uData = uRes.data || [];
+      const dData = dRes.data || [];
 
-      const data = await response.json();
+      // 1. Departments
+      const deptSet = new Set(['Office', 'Plant', 'Admin']);
+      wData.forEach(r => { if (r.Department && r.Department.trim()) deptSet.add(r.Department.trim()); });
+      uData.forEach(r => { if (r.Department && r.Department.trim()) deptSet.add(r.Department.trim()); });
+      dData.forEach(r => { if (r.Department && r.Department.trim()) deptSet.add(r.Department.trim()); });
 
-      if (!data.table || !data.table.rows) {
-        console.log("No master data found");
-        return;
-      }
-
-      // Extract options from columns A, B, and C
-      const departments = [];
-      const givenBy = [];
-      const doers = [];
-
-      // Process all rows starting from index 1 (skip header)
-      data.table.rows.slice(1).forEach((row) => {
-        // Column A - Departments
-        if (row.c && row.c[0] && row.c[0].v) {
-          const value = row.c[0].v.toString().trim();
-          if (value !== "") {
-            departments.push(value);
-          }
+      // 2. Given By
+      const givenBySet = new Set(['Admin', 'EA', 'Vaibhav Sir', 'Neha Garg', 'Rahul Sir']);
+      wData.forEach(r => {
+        const uName = r.Username || r['User name'];
+        const role = (r.Role || '').toLowerCase();
+        if (role === 'admin' || role === 'manager') {
+          if (uName && uName.trim()) givenBySet.add(uName.trim());
         }
-        // Column B - Given By
-        if (row.c && row.c[1] && row.c[1].v) {
-          const value = row.c[1].v.toString().trim();
-          if (value !== "") {
-            givenBy.push(value);
-          }
-        }
-        // Column C - Doers
-        if (row.c && row.c[2] && row.c[2].v) {
-          const value = row.c[2].v.toString().trim();
-          if (value !== "") {
-            doers.push(value);
-          }
-        }
+        if (r['Given By'] && r['Given By'].trim()) givenBySet.add(r['Given By'].trim());
+      });
+      uData.forEach(r => {
+        const gb = r['Give By'] || r['Given By'];
+        if (gb && gb.trim()) givenBySet.add(gb.trim());
+      });
+      dData.forEach(r => {
+        const gb = r['Given By'] || r['Give By'];
+        if (gb && gb.trim()) givenBySet.add(gb.trim());
       });
 
-      // Remove duplicates and sort
-      setDepartmentOptions([...new Set(departments)].sort());
-      setGivenByOptions([...new Set(givenBy)].sort());
-      setDoerOptions([...new Set(doers)].sort());
+      // 3. Doers (Active users from Whatsapp + Unique + Delegation)
+      const doerSet = new Set();
+      wData.forEach(r => {
+        const role = (r.Role || '').toLowerCase();
+        if (role !== 'inactive' && role !== 'in active') {
+          const uName = r.Username || r['User name'];
+          if (uName && uName.trim()) doerSet.add(uName.trim());
+        }
+      });
+      uData.forEach(r => {
+        if (r.Name && r.Name.trim()) doerSet.add(r.Name.trim());
+      });
+      dData.forEach(r => {
+        if (r.Name && r.Name.trim()) doerSet.add(r.Name.trim());
+      });
+
+      setDepartmentOptions(Array.from(deptSet).sort((a, b) => a.localeCompare(b)));
+      setGivenByOptions(Array.from(givenBySet).sort((a, b) => a.localeCompare(b)));
+      setDoerOptions(Array.from(doerSet).sort((a, b) => a.localeCompare(b)));
 
     } catch (error) {
-      console.error("Error fetching master sheet options:", error);
-      // Set default options if fetch fails
-      setDepartmentOptions(["Department 1", "Department 2"]);
-      setGivenByOptions(["User 1", "User 2"]);
-      setDoerOptions(["Doer 1", "Doer 2"]);
+      console.error("Error fetching master dropdown options from Supabase:", error);
+      setDepartmentOptions(["Office", "Plant", "Admin"]);
+      setGivenByOptions(["Admin", "EA", "Vaibhav Sir"]);
+      setDoerOptions(["Admin", "Staff"]);
     }
   };
 
