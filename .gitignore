@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Scratch and Data Dumps
+scratch/
+*.csv
+unique_data.json
+whatsapp_data.json

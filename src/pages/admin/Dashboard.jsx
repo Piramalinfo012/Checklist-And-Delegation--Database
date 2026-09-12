@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { BarChart3, CheckCircle2, Clock, ListTodo, Users, AlertTriangle, Filter, User, Edit3, Upload, X, ChevronDown, Check } from 'lucide-react'
 import AdminLayout from "../../components/layout/AdminLayout.jsx"
+import { supabase } from "../../lib/supabaseClient"
 import {
   BarChart,
   Bar,
@@ -170,67 +171,15 @@ export default function AdminDashboard() {
 
   const fetchUserProfileFromSheets = async (username) => {
     try {
-      // Fetch from master sheet for email
-      // Fetch from master sheet for email
-      const masterResponse = await fetch(`${APPS_SCRIPT_URL}?action=fetch&sheet=master`);
-
-      if (!masterResponse.ok) {
-        throw new Error(`Failed to fetch master sheet data: ${masterResponse.status}`);
-      }
-
-      const masterData = await masterResponse.json();
-
-      // Find user in master sheet (Column C = Username, Column F = Email)
-      const userRow = masterData.table.rows.find((row, index) => {
-        if (index === 0) return false; // Skip header row
-        const rowUsername = getCellValue(row, 2); // Column C (index 2) - Username
-        return rowUsername && rowUsername.toLowerCase() === username.toLowerCase();
-      });
-
+      const { data, error } = await supabase.from('Whatsapp').select('*');
+      if (error) throw error;
+      const userRow = (data || []).find(r => (r['User name'] || r.Username || '').toLowerCase() === (username || '').toLowerCase());
       if (userRow) {
-        const email = getCellValue(userRow, 5); // Column F (index 5) - Email
-        if (email) {
-          setUserEmail(email);
-        }
-
-        // Try to get profile image from master sheet Column H (index 7) first
-        const masterImageUrl = getCellValue(userRow, 7); // Column H (index 7) - Image URL in master sheet
-
-        if (masterImageUrl) {
-          const displayableUrl = getDisplayableImageUrl(masterImageUrl);
-          setUserProfileImage(displayableUrl);
-          return; // Exit early since we found image in master sheet
-        }
-      }
-
-      // If no image found in master sheet, try WhatsApp sheet
-      const whatsappResponse = await fetch(`${APPS_SCRIPT_URL}?action=fetch&sheet=Whatsapp`);
-
-      if (!whatsappResponse.ok) {
-        throw new Error(`Failed to fetch Whatsapp sheet data: ${whatsappResponse.status}`);
-      }
-
-      const whatsappData = await whatsappResponse.json();
-
-      // Find the row with matching username in Column C (index 2)
-      const whatsappUserRow = whatsappData.table.rows.find((row, index) => {
-        if (index === 0) return false; // Skip header row
-        const rowUsername = getCellValue(row, 2); // Column C (index 2) - Username
-        return rowUsername && rowUsername.toLowerCase() === username.toLowerCase();
-      });
-
-      if (whatsappUserRow) {
-        const imageUrl = getCellValue(whatsappUserRow, 7); // Column H (index 7) - Image URL
-        console.log("Profile Image URL from WhatsApp Sheet Column H:", imageUrl);
-
-        if (imageUrl) {
-          const displayableUrl = getDisplayableImageUrl(imageUrl);
-          console.log("Converted Thumbnail URL from WhatsApp Sheet:", displayableUrl);
-          setUserProfileImage(displayableUrl);
-        }
+        if (userRow['ID'] || userRow.Email) setUserEmail(userRow['ID'] || userRow.Email);
+        if (userRow.Image) setUserProfileImage(userRow.Image);
       }
     } catch (error) {
-      console.error("Error fetching from sheets:", error);
+      console.error("Error fetching profile from Supabase:", error);
     }
   };
 
@@ -547,19 +496,71 @@ export default function AdminDashboard() {
 
   // Modified fetch function to support both checklist and delegation
   const fetchDepartmentData = async () => {
-    const sheetName = dashboardType === "delegation" ? "DELEGATION" : "Checklist";
+    const isDelegation = dashboardType === "delegation";
     const userRole = getUserRole();
     const username = sessionStorage.getItem('username');
 
     try {
+      let supabaseRows = [];
+      if (isDelegation) {
+        let query = supabase.from('Delegation').select('*');
+        if (userRole !== "admin" && username) {
+          query = query.ilike('Name', username.trim());
+        }
+        const { data: dData, error: dError } = await query.order('Task ID', { ascending: false }).limit(2500);
+        if (dError) throw dError;
 
-      const response = await fetch(`${APPS_SCRIPT_URL}?action=fetch&sheet=${sheetName}`);
+        supabaseRows = (dData || []).map(r => ({
+          c: [
+            { v: r['Timestamp'] || '' },
+            { v: r['Task ID'] || '' },
+            { v: r['Department'] || '' },
+            { v: r['Given By'] || '' },
+            { v: r['Name'] || '' },
+            { v: r['Task Description'] || '' },
+            { v: r['Task Start Date'] || '' },
+            { v: r['Freq'] || '' },
+            { v: r['Enable Reminders'] || '' },
+            { v: r['Require Attachment'] || '' },
+            { v: r['Status'] || '' },
+            { v: r['Actual'] || '' },
+            { v: r['Delay'] || '' },
+            { v: r['Remarks'] || '' },
+            { v: r['Uploaded Image'] || '' },
+          ]
+        }));
+      } else {
+        let query = supabase.from('Checklist').select('*');
+        if (userRole !== "admin" && username) {
+          query = query.ilike('Name', username.trim());
+        }
+        const { data: cData, error: cError } = await query.order('Task ID', { ascending: false }).limit(2500);
+        if (cError) throw cError;
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch ${sheetName} sheet data: ${response.status}`);
+        supabaseRows = (cData || []).map(r => ({
+          c: [
+            { v: r['Timestamp'] || '' },
+            { v: r['Task ID'] || '' },
+            { v: r['Department'] || r['Firm'] || '' },
+            { v: r['Given By'] || '' },
+            { v: r['Name'] || '' },
+            { v: r['Tast Descriptions'] || r['Task Description'] || '' },
+            { v: r['Task Start Date'] || '' },
+            { v: r['Freq'] || '' },
+            { v: r['Enable Reminders'] || '' },
+            { v: r['Require Attachment'] || '' },
+            { v: r['Actual'] || '' },
+            { v: r['Delay'] || '' },
+            { v: r['Status'] || '' },
+            { v: r['Remarks'] || '' },
+            { v: r['Uploaded Image'] || '' },
+            { v: r['Admin Done'] || '' },
+            { v: r['Leave'] || '' },
+          ]
+        }));
       }
 
-      const data = await response.json();
+      const data = { table: { rows: [{ c: [] }, ...supabaseRows] } };
 
       // Initialize counters
       let totalTasks = 0;
@@ -890,6 +891,43 @@ export default function AdminDashboard() {
       //console.log(`  Completed Rating 3+: ${completedRatingThreePlus}`);
 
 
+      // Fetch accurate global counts from Supabase directly
+      let exactTotalTasks = totalTasks;
+      let exactCompletedTasks = completedTasks;
+      let exactPendingTasks = pendingTasks;
+
+      try {
+        if (isDelegation) {
+          let qTotal = supabase.from('Delegation').select('*', { count: 'exact', head: true });
+          let qDone = supabase.from('DELEGATION DONE').select('*', { count: 'exact', head: true });
+          if (userRole !== "admin" && username) {
+            qTotal = qTotal.ilike('Name', username.trim());
+            qDone = qDone.ilike('Name', username.trim());
+          }
+          const [tRes, dRes] = await Promise.all([qTotal, qDone]);
+          exactTotalTasks = tRes.count || 0;
+          exactCompletedTasks = dRes.count || 0;
+          exactPendingTasks = Math.max(0, exactTotalTasks - exactCompletedTasks);
+        } else {
+          let qTotal = supabase.from('Checklist').select('*', { count: 'exact', head: true });
+          let qPending = supabase.from('Checklist').select('*', { count: 'exact', head: true }).is('Actual', null);
+          if (userRole !== "admin" && username) {
+            qTotal = qTotal.ilike('Name', username.trim());
+            qPending = qPending.ilike('Name', username.trim());
+          }
+          const [tRes, pRes] = await Promise.all([qTotal, qPending]);
+          exactTotalTasks = tRes.count || 0;
+          exactPendingTasks = pRes.count || 0;
+          exactCompletedTasks = Math.max(0, exactTotalTasks - exactPendingTasks);
+        }
+      } catch (cntErr) {
+        console.warn('Count fetch error:', cntErr);
+      }
+
+      totalTasks = exactTotalTasks;
+      completedTasks = exactCompletedTasks;
+      pendingTasks = exactPendingTasks;
+
       // Calculate completion rate
       const completionRate = totalTasks > 0 ? ((completedTasks / totalTasks) * 100).toFixed(1) : 0;
 
@@ -947,9 +985,6 @@ export default function AdminDashboard() {
         completedRatingThreePlus
       };
       setDepartmentData(newDepartmentData);
-      try {
-        localStorage.setItem(`dashboard_page_cache_${dashboardType}`, JSON.stringify(newDepartmentData));
-      } catch (e) { /* ignore quota errors */ }
 
       // Success — clear any error indicator and cancel a pending retry, if one was scheduled.
       setDataLoadError(false);

@@ -1,6 +1,7 @@
 "use client"
 import { useEffect, useState, useCallback } from "react";
 import { format } from 'date-fns';
+import { supabase } from '../lib/supabaseClient';
 import { Search, ChevronDown, Filter, RefreshCw } from "lucide-react";
 import AdminLayout from "../components/layout/AdminLayout";
 import DelegationPage from "./delegation-data";
@@ -40,108 +41,44 @@ export default function QuickTask() {
   // Auto-detect current user from login session and get role from Whatsapp sheet
   const fetchCurrentUser = useCallback(async () => {
     try {
-      // Get user data from your login system (sessionStorage)
       const loggedInUsername = sessionStorage.getItem('username');
-
       if (!loggedInUsername) {
         throw new Error("No user logged in. Please log in to access tasks.");
       }
 
-      const CACHE_TTL = 2 * 60 * 60 * 1000; // 2 Hours TTL
-      const cacheKey = `whatsapp_user_cache_v4_${loggedInUsername}`;
-      const cacheTimeKey = `whatsapp_user_cache_time_v4_${loggedInUsername}`;
-      const cachedDataStr = localStorage.getItem(cacheKey);
-      const cachedTimeStr = localStorage.getItem(cacheTimeKey);
-      let hasCache = false;
-      let isCacheValid = false;
-
-      if (cachedDataStr) {
-        try {
-          const foundUser = JSON.parse(cachedDataStr);
-          setCurrentUser(foundUser.name);
-          setUserRole(foundUser.role);
-          setUserLoading(false); // unlock subsequent fetches instantly
-          hasCache = true;
-
-          const cachedTime = Number(cachedTimeStr || 0);
-          if (cachedTime && (Date.now() - cachedTime < CACHE_TTL)) {
-            isCacheValid = true;
-          }
-        } catch (e) { console.error("Cache error", e); }
-      }
-
-      // If cache is valid (within 2 hours), do not call API again
-      if (isCacheValid) {
-        return;
-      }
-
-      if (!hasCache) {
-        setUserLoading(true);
-      }
+      setUserLoading(true);
       setError(null);
 
-      // Background fetch
-      // Background fetch
-      const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=fetch&sheet=${CONFIG.WHATSAPP_SHEET}`);
-      const text = await response.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (parseError) {
-        const jsonStart = text.indexOf("{");
-        const jsonEnd = text.lastIndexOf("}");
-        if (jsonStart !== -1 && jsonEnd !== -1) {
-          const jsonString = text.substring(jsonStart, jsonEnd + 1);
-          data = JSON.parse(jsonString);
-        } else {
-          throw new Error("Invalid JSON response from server");
-        }
-      }
-
-      if (data?.table?.rows) {
-        let foundUser = null;
-
-        // Skip header row and search for user
-        data.table.rows.slice(1).forEach((row) => {
-          if (row.c) {
-            const doerName = row.c[2]?.v || ""; // Column C - Doer's Name
-            const role = row.c[4]?.v || "user"; // Column E - Role
-
-            // Match by username (case-insensitive)
-            if (doerName.toLowerCase().trim() === loggedInUsername.toLowerCase().trim()) {
-              foundUser = {
-                name: doerName,
-                role: role.toLowerCase().trim(),
-                department: row.c[0]?.v || "", // Column A - Department
-                givenBy: row.c[1]?.v || "", // Column B - Given By
-                email: row.c[5]?.v || "" // Column F - ID/Email
-              };
-            }
-          }
-        });
-
-        if (!foundUser) {
-          const sessionRole = sessionStorage.getItem('role') || 'user';
+      const { data, error } = await supabase.from('Whatsapp').select('*');
+      
+      let foundUser = null;
+      if (data && data.length > 0) {
+        // Skip header row logic from sheet isn't needed anymore, just find user by Name
+        const userRow = data.find(row => row['Name']?.toLowerCase().trim() === loggedInUsername.toLowerCase().trim());
+        if (userRow) {
           foundUser = {
-            name: loggedInUsername,
-            role: sessionRole.toLowerCase().trim(),
-            department: "",
-            givenBy: "",
-            email: ""
+            name: userRow['Name'],
+            role: (userRow['Role'] || "user").toLowerCase().trim(),
+            department: userRow['Department'] || "",
+            givenBy: userRow['Given By'] || "",
+            email: userRow['Email'] || ""
           };
         }
-
-        setCurrentUser(foundUser.name);
-        setUserRole(foundUser.role);
-        try {
-          localStorage.setItem(cacheKey, JSON.stringify(foundUser));
-          localStorage.setItem(cacheTimeKey, Date.now().toString());
-        } catch(e) { console.warn('Cache full'); }
-      } else {
-        const sessionRole = sessionStorage.getItem('role') || 'user';
-        setCurrentUser(loggedInUsername);
-        setUserRole(sessionRole.toLowerCase().trim());
       }
+
+      if (!foundUser) {
+        const sessionRole = sessionStorage.getItem('role') || 'user';
+        foundUser = {
+          name: loggedInUsername,
+          role: sessionRole.toLowerCase().trim(),
+          department: "",
+          givenBy: "",
+          email: ""
+        };
+      }
+
+      setCurrentUser(foundUser.name);
+      setUserRole(foundUser.role);
     } catch (err) {
       console.error("Error fetching user:", err);
       const sessionRole = sessionStorage.getItem('role') || 'user';
@@ -162,130 +99,30 @@ export default function QuickTask() {
     const user = currentUser || loggedInUsername;
     if (!user || userLoading) return;
 
-    let hasCache = false;
-
+    setLoading(true);
     try {
-      const CACHE_TTL = 2 * 60 * 60 * 1000; // 2 Hours TTL
-      const cacheKey = `unique_tasks_live_v9_${user}`;
-      const cacheTimeKey = `unique_tasks_live_time_v9_${user}`;
-      const cachedDataStr = localStorage.getItem(cacheKey);
-      const cachedTimeStr = localStorage.getItem(cacheTimeKey);
-      let isCacheValid = false;
+      const { data, error } = await supabase
+        .from('Unique')
+        .select('*')
+        .order('Task ID', { ascending: false })
+        .limit(2000);
+      if (error) throw error;
 
-      // Purge any stale cache versions
-      ['unique_tasks_live_v4_', 'unique_tasks_live_v5_', 'unique_tasks_live_v6_', 'unique_tasks_live_v7_', 'unique_tasks_live_v8_'].forEach(prefix => {
-        try {
-          localStorage.removeItem(`${prefix}${user}`);
-          localStorage.removeItem(`${prefix}time_${user}`);
-        } catch(e) {}
-      });
-
-      if (cachedDataStr) {
-        try {
-          const cachedTasks = JSON.parse(cachedDataStr);
-          const isCorrupt = !Array.isArray(cachedTasks) || cachedTasks.some(t => 
-            t.Department === 'Rahul Sir' || 
-            t['Given By'] === 'admin123' || 
-            (typeof t.Frequency === 'string' && t.Frequency.startsWith('http'))
-          );
-          if (!isCorrupt && Array.isArray(cachedTasks) && cachedTasks.length > 0) {
-            setTasks(cachedTasks);
-            setLoading(false);
-            hasCache = true;
-
-            const cachedTime = Number(cachedTimeStr || 0);
-            if (cachedTime && (Date.now() - cachedTime < CACHE_TTL)) {
-              isCacheValid = true;
-            }
-          } else {
-            localStorage.removeItem(cacheKey);
-            localStorage.removeItem(cacheTimeKey);
-          }
-        } catch (e) {
-          localStorage.removeItem(cacheKey);
-          localStorage.removeItem(cacheTimeKey);
-        }
-      }
-
-      // If cache is valid (within 2 hours), do not call API again
-      if (isCacheValid) {
-        return;
-      }
-
-      if (!hasCache) setLoading(true);
-
-      let fetchedRows = [];
-      let isGviz = false;
-
-      // Fetch via Apps Script — Google's exec redirect occasionally 404s on a
-      // transient hiccup. Retry a few times (with a short backoff) before
-      // giving up, since on a first-ever load (no cache to fall back on) a
-      // single failed attempt would otherwise show a hard "Access Denied".
-      const CHECKLIST_FETCH_ATTEMPTS = 3;
-      for (let attempt = 1; attempt <= CHECKLIST_FETCH_ATTEMPTS; attempt++) {
-        try {
-          const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=fetch&sheet=${CONFIG.CHECKLIST_SHEET}`);
-          const text = await response.text();
-          let data;
-          try {
-            data = JSON.parse(text);
-          } catch (parseError) {
-            const jsonStart = text.indexOf("{");
-            const jsonEnd = text.lastIndexOf("}");
-            if (jsonStart !== -1 && jsonEnd !== -1) {
-              const jsonString = text.substring(jsonStart, jsonEnd + 1);
-              data = JSON.parse(jsonString);
-            } else {
-              throw new Error("Invalid JSON response from server");
-            }
-          }
-
-          if (data?.table?.rows && Array.isArray(data.table.rows) && data.table.rows.length > 1) {
-            // Check if Apps Script returned Whatsapp or Master sheet by mistake
-            const firstRowCells = data.table.rows[0]?.c?.map(x => x?.v) || [];
-            const isWhatsappData = firstRowCells.includes('password') || firstRowCells.includes('Role');
-
-            if (!isWhatsappData) {
-              fetchedRows = data.table.rows;
-            }
-          } else if (Array.isArray(data) && data.length > 1) {
-            fetchedRows = data.map((row) => ({ c: row.map((val) => ({ v: val })) }));
-          } else if (data.values && Array.isArray(data.values) && data.values.length > 1) {
-            fetchedRows = data.values.map((row) => ({ c: row.map((val) => ({ v: val })) }));
-          }
-
-          if (fetchedRows.length > 0) break;
-        } catch (err) {
-          console.error(`Apps Script fetch failed (attempt ${attempt}/${CHECKLIST_FETCH_ATTEMPTS}):`, err);
-        }
-
-        if (attempt < CHECKLIST_FETCH_ATTEMPTS) {
-          await new Promise((r) => setTimeout(r, 700 * attempt));
-        }
-      }
-
-      if (fetchedRows.length > 0) {
-        // If from Apps Script, rows[0] is header and rows[1] can be empty
-        // If from GViz, rows are data rows
-        const dataRows = isGviz ? fetchedRows : fetchedRows.slice(1);
-
-        const transformedData = dataRows.map((row, rowIndex) => {
-          const rawDescription = row.c && row.c[5]?.v !== undefined && row.c[5]?.v !== null ? String(row.c[5].v).trim() : "";
-          const rawName = row.c && row.c[4]?.v !== undefined && row.c[4]?.v !== null ? String(row.c[4].v).trim() : "";
-          const baseData = {
-            _id: `checklist_${rowIndex}_${Math.random().toString(36).substring(2, 15)}`,
+      if (data && data.length > 0) {
+        const transformedData = data.map((row, rowIndex) => {
+          return {
+            _id: `unique_${rowIndex}_${Math.random().toString(36).substring(2, 15)}`,
             _rowIndex: rowIndex + 2,
-            Department: row.c && row.c[2]?.v !== undefined && row.c[2]?.v !== null ? String(row.c[2].v).trim() : "",
-            'Given By': row.c && row.c[3]?.v !== undefined && row.c[3]?.v !== null ? String(row.c[3].v).trim() : "",
-            Name: rawName,
-            'Task Description': rawDescription,
-            'Start Date': formatDate(row.c && row.c[6]?.v),
-            Frequency: row.c && row.c[7]?.v !== undefined && row.c[7]?.v !== null ? String(row.c[7].v).trim() : "",
-            Reminders: row.c && row.c[8]?.v !== undefined && row.c[8]?.v !== null ? String(row.c[8].v).trim() : "",
-            Attachment: row.c && row.c[9]?.v !== undefined && row.c[9]?.v !== null ? String(row.c[9].v).trim() : "",
+            Department: row['Department'] || "",
+            'Given By': row['Give By'] || row['Given By'] || "Admin",
+            Name: row['Name'] || "",
+            'Task Description': row['Task Description'] || row['Tast Descriptions'] || "",
+            'Start Date': row['Task Start date'] || row['Task Start Date'] || "",
+            Frequency: row['Frequency'] || row['Freq'] || "daily",
+            Reminders: row['Enable Reminder'] || row['Enable Reminders'] || "Yes",
+            Attachment: row['Require Attatchment'] || row['Require Attachment'] || "No",
             Task: 'Checklist'
           };
-          return baseData;
         }).filter(item => {
           return Boolean(item['Task Description'] || item.Name) && item.Department !== 'Timestamp' && item.Department !== 'Department';
         });
@@ -305,35 +142,22 @@ export default function QuickTask() {
         const activeRole = (userRole || sessionStorage.getItem('role') || 'user').toLowerCase();
         let filteredData;
         if (activeRole === 'admin') {
-          // Admin sees all unique tasks
           filteredData = uniqueTasks;
         } else {
-          // Regular user sees only their tasks (where Name matches current user)
           filteredData = uniqueTasks.filter(item => {
             const itemName = (item.Name || '').toString().toLowerCase().trim();
             const currentUserLower = user.toLowerCase().trim();
-
             return itemName === currentUserLower;
           });
         }
 
         setTasks(filteredData);
-        try {
-          localStorage.setItem(cacheKey, JSON.stringify(filteredData));
-          localStorage.setItem(cacheTimeKey, Date.now().toString());
-        } catch(e) { console.warn('Cache full'); }
       } else {
-        throw new Error("Invalid checklist data format");
+        setTasks([]);
       }
     } catch (err) {
       console.error("Checklist fetch error:", err);
-      // If we already have (stale) cached tasks on screen, a failed background
-      // revalidation (e.g. a transient Apps Script/redirect hiccup) shouldn't wipe
-      // that working view into a hard error screen — just keep showing the cached
-      // data and let the next refresh try again.
-      if (!hasCache) {
-        setError(err.message || "Failed to load checklist data");
-      }
+      setError(err.message || "Failed to load checklist data");
     } finally {
       setLoading(false);
     }
@@ -342,73 +166,27 @@ export default function QuickTask() {
   const fetchDelegationData = useCallback(async () => {
     if (!currentUser || userLoading) return;
 
+    setDelegationLoading(true);
     try {
-      const CACHE_TTL = 2 * 60 * 60 * 1000; // 2 Hours TTL
-      const cacheKey = `delegation_cache_${currentUser}`;
-      const cacheTimeKey = `delegation_cache_time_${currentUser}`;
-      const cachedDataStr = localStorage.getItem(cacheKey);
-      const cachedTimeStr = localStorage.getItem(cacheTimeKey);
-      let hasCache = false;
-      let isCacheValid = false;
+      const { data, error } = await supabase.from('Delegation').select('*');
+      if (error) throw error;
 
-      if (cachedDataStr) {
-        try {
-          const cachedTasks = JSON.parse(cachedDataStr);
-          setDelegationTasks(cachedTasks);
-          setDelegationLoading(false);
-          hasCache = true;
-
-          const cachedTime = Number(cachedTimeStr || 0);
-          if (cachedTime && (Date.now() - cachedTime < CACHE_TTL)) {
-            isCacheValid = true;
-          }
-        } catch (e) {}
-      }
-
-      // If cache is valid (within 2 hours), do not call API again
-      if (isCacheValid) {
-        return;
-      }
-
-      if (!hasCache) setDelegationLoading(true);
-
-      // Background fetch
-      // Background fetch
-      const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?action=fetch&sheet=${CONFIG.DELEGATION_SHEET}`);
-      const text = await response.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (parseError) {
-        const jsonStart = text.indexOf("{");
-        const jsonEnd = text.lastIndexOf("}");
-        if (jsonStart !== -1 && jsonEnd !== -1) {
-          const jsonString = text.substring(jsonStart, jsonEnd + 1);
-          data = JSON.parse(jsonString);
-        } else {
-          throw new Error("Invalid JSON response from server");
-        }
-      }
-
-      if (data?.table?.rows) {
-        const rows = data.table.rows.slice(1); // Skip header
-        const transformedData = rows.map((row, rowIndex) => {
-          const baseData = {
+      if (data && data.length > 0) {
+        const transformedData = data.map((row, rowIndex) => {
+          return {
             _id: `delegation_${rowIndex}_${Math.random().toString(36).substring(2, 15)}`,
             _rowIndex: rowIndex + 2,
-            // Map columns from Delegation sheet (keep existing mapping)
-            Timestamp: formatDate(row.c[0]?.v),
-            'Task ID': row.c[1]?.v || "",
-            Department: row.c[2]?.v || "",
-            'Given By': row.c[3]?.v || "",
-            Name: row.c[4]?.v || "",
-            'Task Description': row.c[5]?.v || "",
-            'Task Start Date': formatDate(row.c[6]?.v),
-            Freq: row.c[7]?.v || "",
-            'Enable Reminders': row.c[8]?.v || "",
-            'Require Attachment': row.c[9]?.v || "",
+            Timestamp: row['Timestamp'] || "",
+            'Task ID': row['Task ID'] || "",
+            Department: row['Department'] || "",
+            'Given By': row['Given By'] || "",
+            Name: row['Name'] || "",
+            'Task Description': row['Task Description'] || "",
+            'Task Start Date': row['Task Start Date'] || "",
+            Freq: row['Freq'] || "",
+            'Enable Reminders': row['Enable Reminders'] || "",
+            'Require Attachment': row['Require Attachment'] || "",
           };
-          return baseData;
         });
 
         // Apply role-based filtering (unchanged from original)
@@ -431,12 +209,8 @@ export default function QuickTask() {
         }
 
         setDelegationTasks(filteredData);
-        try {
-          localStorage.setItem(cacheKey, JSON.stringify(filteredData));
-          localStorage.setItem(cacheTimeKey, Date.now().toString());
-        } catch(e) { console.warn('Cache full'); }
       } else {
-        throw new Error("Invalid delegation data format");
+        setDelegationTasks([]);
       }
     } catch (err) {
       console.error("Delegation fetch error:", err);

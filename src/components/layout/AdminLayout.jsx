@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
-import { CheckSquare, ClipboardList, Home, LogOut, Menu, Database, ChevronDown, ChevronRight, Zap, FileText, X, Play, Pause, KeyRound, Video } from 'lucide-react'
+import { CheckSquare, ClipboardList, Home, LogOut, Menu, Database, ChevronDown, ChevronRight, Zap, FileText, X, Play, Pause, KeyRound, Video, Settings } from 'lucide-react'
 import sbhLogo from '../../assets/logo.png'
 import { motion, AnimatePresence } from "framer-motion"
 
@@ -60,16 +60,29 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
     setUsername(storedUsername)
     setUserRole(storedRole || "user")
     setUserEmail(storedEmail || "")
+
+    // Background auto-trigger task generation if role is admin
+    if (storedRole === 'admin' && localStorage.getItem('auto_trigger_on_login') !== 'false') {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const lastAutoRun = localStorage.getItem('last_auto_trigger_date');
+      if (lastAutoRun !== todayStr) {
+        localStorage.setItem('last_auto_trigger_date', todayStr);
+        import('../../utils/taskTriggerEngine.js').then(m => {
+          m.runTaskGenerationTrigger({ targetDate: new Date(), ignoreCalendarCheck: false });
+        }).catch(err => console.warn('Auto trigger error:', err));
+      }
+    }
   }, [navigate])
 
 
 
   // Handle logout
   const handleLogout = () => {
-    sessionStorage.removeItem('username')
-    sessionStorage.removeItem('role')
-    sessionStorage.removeItem('department')
-    sessionStorage.removeItem('email')
+    sessionStorage.clear()
+    localStorage.removeItem('checklist_page_cache_v1')
+    localStorage.removeItem('delegation_page_cache_v1')
+    localStorage.removeItem('dashboard_page_cache_checklist')
+    localStorage.removeItem('dashboard_page_cache_delegation')
     navigate("/login")
   }
 
@@ -132,6 +145,13 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
       icon: Video,
       active: location.pathname === "/dashboard/traning-video",
       showFor: ["admin", "user"] //  show both
+    },
+    {
+      href: "/dashboard/settings",
+      label: "Settings",
+      icon: Settings,
+      active: location.pathname === "/dashboard/settings",
+      showFor: ["admin", "user"] // Show for admin and user
     },
   ]
 

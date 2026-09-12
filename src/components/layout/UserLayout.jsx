@@ -26,7 +26,11 @@ const UserLayout = ({ children }) => {
 
   // Logout handler
   const handleLogout = () => {
-    sessionStorage.removeItem('username')
+    sessionStorage.clear()
+    localStorage.removeItem('checklist_page_cache_v1')
+    localStorage.removeItem('delegation_page_cache_v1')
+    localStorage.removeItem('dashboard_page_cache_checklist')
+    localStorage.removeItem('dashboard_page_cache_delegation')
     navigate('/login')
   }
 

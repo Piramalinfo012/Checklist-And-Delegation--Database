@@ -2,6 +2,8 @@
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from "react"
 import { CheckCircle2, Upload, X, Search, History, ArrowLeft, Filter, Edit, Camera, Image as ImageIcon, Clipboard, RefreshCw } from "lucide-react"
 import AdminLayout from "../../components/layout/AdminLayout"
+import { supabase } from "../../lib/supabaseClient"
+import { uploadImageToCloudinary } from "../../lib/cloudinary"
 
 // Configuration object - Move all configurations here
 const CONFIG = {
@@ -392,47 +394,31 @@ function AccountDataPage() {
 
   const handleEditRemarks = async (id, currentRemarks, historyItem) => {
     try {
-      const formData = new FormData();
-      formData.append("sheetName", CONFIG.SHEET_NAME);
-      formData.append("action", "update");
-      formData.append("rowIndex", historyItem._rowIndex);
+      const newRemarks = tempRemarks[id] || currentRemarks || "";
+      const taskId = historyItem.col1 ? parseInt(historyItem.col1, 10) : historyItem._taskId;
 
-      // Create row data array with empty values for all columns except remarks
-      const rowData = Array(15).fill(""); // Create empty array for 15 columns
-      rowData[13] = tempRemarks[id] || currentRemarks || ""; // Column N (index 13) is remarks
+      const { error } = await supabase
+        .from('Checklist')
+        .update({ Remarks: newRemarks })
+        .eq('Task ID', taskId);
 
-      formData.append("rowData", JSON.stringify(rowData));
+      if (error) throw error;
 
-      const response = await fetch(CONFIG.APPS_SCRIPT_URL, {
-        method: "POST",
-        body: formData,
+      // Update local state
+      setHistoryData(prev =>
+        prev.map(item =>
+          item._id === id ? { ...item, col13: newRemarks } : item
+        )
+      );
+      setEditingRemarks(prev => ({ ...prev, [id]: false }));
+      setSuccessMessage("Remarks updated successfully!");
+
+      // Clear temporary remarks
+      setTempRemarks(prev => {
+        const newTemp = { ...prev };
+        delete newTemp[id];
+        return newTemp;
       });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
-        // Update local state
-        setHistoryData(prev =>
-          prev.map(item =>
-            item._id === id ? { ...item, col13: tempRemarks[id] || currentRemarks || "" } : item
-          )
-        );
-        setEditingRemarks(prev => ({ ...prev, [id]: false }));
-        setSuccessMessage("Remarks updated successfully!");
-
-        // Clear temporary remarks
-        setTempRemarks(prev => {
-          const newTemp = { ...prev };
-          delete newTemp[id];
-          return newTemp;
-        });
-      } else {
-        throw new Error(result.error || "Failed to update remarks");
-      }
     } catch (error) {
       console.error("Error updating remarks:", error);
       setSuccessMessage(`Failed to update remarks: ${error.message}`);
@@ -621,40 +607,23 @@ function AccountDataPage() {
     // Close the modal
     setConfirmationModal({ isOpen: false, itemCount: 0 });
     setMarkingAsDone(true);
-
     try {
-      // Prepare submission data for multiple items
-      const submissionData = selectedHistoryItems.map((historyItem) => ({
-        taskId: historyItem._taskId || historyItem["col1"],
-        rowIndex: historyItem._rowIndex,
-        adminDoneStatus: "Admin Done", // This will update Column P
-      }));
-
-      const formData = new FormData();
-      formData.append("sheetName", CONFIG.SHEET_NAME);
-      formData.append("action", "updateAdminDone");
-      formData.append("rowData", JSON.stringify(submissionData));
-
-      const response = await fetch(CONFIG.APPS_SCRIPT_URL, {
-        method: "POST",
-        body: formData,
-      });
-      const result = await response.json();
-
-      if (result.success) {
-        // Remove processed items from history view
-        setHistoryData((prev) =>
-          prev.filter((item) => !selectedHistoryItems.some((selected) => selected._id === item._id))
-        );
-
-        setSelectedHistoryItems([]);
-        setSuccessMessage(`Successfully marked ${selectedHistoryItems.length} items as Admin Done!`);
-
-        // Refresh data immediately
-        fetchSheetData();
-      } else {
-        throw new Error(result.error || "Failed to mark items as Admin Done");
+      for (const historyItem of selectedHistoryItems) {
+        const taskId = historyItem.col1 ? parseInt(historyItem.col1, 10) : historyItem._taskId;
+        await supabase
+          .from('Checklist')
+          .update({ 'Admin Done': 'Admin Done' })
+          .eq('Task ID', taskId);
       }
+
+      setHistoryData((prev) =>
+        prev.filter((item) => !selectedHistoryItems.some((selected) => selected._id === item._id))
+      );
+
+      setSelectedHistoryItems([]);
+      setSuccessMessage(`Successfully marked ${selectedHistoryItems.length} items as Admin Done!`);
+
+      fetchSheetData();
     } catch (error) {
       console.error("Error marking tasks as Admin Done:", error);
       setSuccessMessage(`Failed to mark tasks as Admin Done: ${error.message}`);
@@ -921,35 +890,31 @@ function AccountDataPage() {
     }
   }, [membersList, userRole, username])
 
-  // isBackground=true is used by the 15s poll below: it refetches silently
+  const isFetchingRef = useRef(false)
+
+  // isBackground=true is used by the poll below: it refetches silently
   // (no spinner) and, on failure, keeps whatever data is already on screen
   // instead of blanking it out over a transient network hiccup.
   const fetchSheetData = useCallback(async (isBackground = false) => {
+    if (isFetchingRef.current) return
+    isFetchingRef.current = true
     try {
       if (!isBackground) setLoading(true)
-      const pendingAccounts = []
-      const historyRows = []
-      const response = await fetch(`${CONFIG.APPS_SCRIPT_URL}?sheet=${CONFIG.SHEET_NAME}&action=fetch`)
-      if (!response.ok) {
-        throw new Error(`Failed to fetch data: ${response.status}`)
-      }
-      const text = await response.text()
-      let data
-      try {
-        data = JSON.parse(text)
-      } catch (parseError) {
-        const jsonStart = text.indexOf("{")
-        const jsonEnd = text.lastIndexOf("}")
-        if (jsonStart !== -1 && jsonEnd !== -1) {
-          const jsonString = text.substring(jsonStart, jsonEnd + 1)
-          data = JSON.parse(jsonString)
-        } else {
-          throw new Error("Invalid JSON response from server")
-        }
-      }
-
       const currentUsername = sessionStorage.getItem("username")
       const currentUserRole = sessionStorage.getItem("role")
+      const userParam = (currentUserRole !== "admin" && currentUsername) ? `&user=${encodeURIComponent(currentUsername)}` : ""
+      const pendingAccounts = []
+      const historyRows = []
+      
+      let query = supabase.from('Checklist').select('*')
+      if (currentUserRole !== "admin" && currentUsername) {
+        query = query.ilike('Name', currentUsername.trim())
+      }
+      const { data: supabaseRows, error: sbError } = await query
+        .order('Task ID', { ascending: false })
+        .limit(2500)
+      if (sbError) throw sbError
+
       const today = new Date()
       const tomorrow = new Date(today)
       tomorrow.setDate(today.getDate() + 1)
@@ -962,14 +927,30 @@ function AccountDataPage() {
       const yesterdayStr = formatDateToDDMMYYYY(yesterday)
 
       const membersSet = new Set()
-      let rows = []
-      if (data.table && data.table.rows) {
-        rows = data.table.rows
-      } else if (Array.isArray(data)) {
-        rows = data
-      } else if (data.values) {
-        rows = data.values.map((row) => ({ c: row.map((val) => ({ v: val })) }))
-      }
+      let rows = [
+        { c: [] }, // dummy header row for 1-based index
+        ...(supabaseRows || []).map((r) => ({
+          c: [
+            { v: r['Timestamp'] || '' },
+            { v: r['Task ID'] || '' },
+            { v: r['Department'] || r['Firm'] || '' },
+            { v: r['Given By'] || '' },
+            { v: r['Name'] || '' },
+            { v: r['Tast Descriptions'] || r['Task Description'] || '' },
+            { v: r['Task Start Date'] || '' },
+            { v: r['Freq'] || '' },
+            { v: r['Enable Reminders'] || '' },
+            { v: r['Require Attachment'] || '' },
+            { v: r['Actual'] || '' },
+            { v: r['Delay'] || '' },
+            { v: r['Status'] || '' },
+            { v: r['Remarks'] || '' },
+            { v: r['Uploaded Image'] || '' },
+            { v: r['Admin Done'] || '' },
+            { v: r['Leave'] || '' },
+          ]
+        }))
+      ]
 
       // List of users who get 1-day grace period
       const usersWithGracePeriod = [
@@ -1117,52 +1098,30 @@ function AccountDataPage() {
       })
       setHistoryData(historyRows)
       hasLoadedOnceRef.current = true
-      try {
-        localStorage.setItem(
-          "checklist_page_cache_v1",
-          JSON.stringify({ pendingAccounts, historyRows, sortedMembers })
-        )
-      } catch (e) { /* ignore quota errors */ }
+      // Removed localStorage caching to guarantee 100% real-time data & avoid cross-user leakage
       if (!isBackground) setLoading(false)
     } catch (error) {
       console.error("Error fetching sheet data:", error)
-      // A silent background poll that fails (transient network/Apps Script
-      // hiccup) shouldn't blank out data that's already on screen — only
-      // surface the error if we have nothing loaded yet to fall back on.
       if (!isBackground || !hasLoadedOnceRef.current) {
         setError("Failed to load account data: " + error.message)
       }
       if (!isBackground) setLoading(false)
+    } finally {
+      isFetchingRef.current = false
     }
   }, [])
 
   useEffect(() => {
-    // Show cached data from the last visit instantly (no spinner flash) when
-    // navigating back to this page, then quietly refresh it in the background.
-    let cameFromCache = false
-    try {
-      const cached = localStorage.getItem("checklist_page_cache_v1")
-      if (cached) {
-        const parsedCache = JSON.parse(cached)
-        if (parsedCache && Array.isArray(parsedCache.pendingAccounts) && parsedCache.pendingAccounts.length > 0) {
-          setAccountData(parsedCache.pendingAccounts)
-          setHistoryData(parsedCache.historyRows || [])
-          setMembersList(parsedCache.sortedMembers || [])
-          setLoading(false)
-          hasLoadedOnceRef.current = true
-          cameFromCache = true
-        }
-      }
-    } catch (e) { /* ignore corrupt cache */ }
-    fetchSheetData(cameFromCache)
+    // 100% Real-time direct fetch on page load
+    fetchSheetData(false)
   }, [fetchSheetData])
 
-  // Near-real-time refresh: silently re-fetch every 15s in the background so
+  // Near-real-time refresh: silently re-fetch in the background so
   // updates made elsewhere in the sheet show up here without a manual reload.
   useEffect(() => {
     const intervalId = setInterval(() => {
       fetchSheetData(true)
-    }, 15000)
+    }, 45000)
     return () => clearInterval(intervalId)
   }, [fetchSheetData])
 
@@ -1292,41 +1251,6 @@ function AccountDataPage() {
     })
   }
 
-  // Robust POST to Apps Script: retries transient failures and parses JSON defensively.
-  // Bulk submits on weak mobile networks intermittently get network hiccups or a non-JSON
-  // redirect/error page from Google — without this, response.json() throws and the whole
-  // submission fails. Retrying + safe parsing makes bulk-with-images reliable everywhere.
-  const postToAppsScript = async (formData, maxRetries = 3) => {
-    let lastError;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
-          method: "POST",
-          body: formData,
-        });
-        const text = await res.text();
-        // Parse defensively — Apps Script sometimes wraps JSON in other text.
-        try {
-          return JSON.parse(text);
-        } catch (parseErr) {
-          const start = text.indexOf("{");
-          const end = text.lastIndexOf("}");
-          if (start !== -1 && end !== -1) {
-            return JSON.parse(text.substring(start, end + 1));
-          }
-          throw new Error("Invalid response from server");
-        }
-      } catch (err) {
-        lastError = err;
-        // Back off a little before retrying so we don't hammer the endpoint.
-        if (attempt < maxRetries) {
-          await new Promise((r) => setTimeout(r, 800 * attempt));
-        }
-      }
-    }
-    throw lastError || new Error("Request failed");
-  };
-
   const toggleHistory = useCallback(() => {
     setShowHistory((prev) => !prev)
     resetFilters()
@@ -1340,7 +1264,6 @@ function AccountDataPage() {
       return;
     }
 
-    // Existing validation checks remain the same
     const missingRemarks = selectedItemsArray.filter((id) => {
       const additionalStatus = additionalData[id];
       const remarks = remarksData[id];
@@ -1367,57 +1290,64 @@ function AccountDataPage() {
 
     setIsSubmitting(true);
     try {
-      const today = new Date();
-      // Format as DD/MM/YYYY HH:MM:SS for column K
-      const todayFormatted = formatDateToDDMMYYYY(today);
-      console.log("submission date:", todayFormatted);
+      const now = new Date();
+      const currentTimestamp = now.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+      const todayFormatted = formatDateToDDMMYYYY(now);
 
-      // Prepare data for submission
-      const submissionData = [];
       const imageUrlMap = {};
 
-      // Upload images SEQUENTIALLY (one file at a time). Firing every upload in parallel
-      // overwhelms Apps Script on weaker mobiles/networks and makes bulk submits fail. Each
-      // upload is retried, so a single transient hiccup no longer breaks the whole submission.
       for (const id of selectedItemsArray) {
         const item = accountData.find((account) => account._id === id);
+        if (!item) continue;
 
         if (Array.isArray(item.image) && item.image.length > 0) {
           const urls = [];
           for (const file of item.image) {
-            try {
-              const base64Data = await fileToBase64(file);
-              const formData = new FormData();
-              formData.append("action", "uploadFile");
-              formData.append("base64Data", base64Data);
-              formData.append("fileName", `task_${item["col1"]}_${Date.now()}_${Math.random().toString(36).substring(7)}.${file.name ? file.name.split(".").pop() : "jpg"}`);
-              formData.append("mimeType", file.type);
-              formData.append("folderId", CONFIG.DRIVE_FOLDER_ID);
-
-              const result = await postToAppsScript(formData);
-              if (result && result.success && result.fileUrl) {
-                urls.push(result.fileUrl);
+            if (file instanceof File) {
+              try {
+                const url = await uploadImageToCloudinary(file);
+                if (url) urls.push(url);
+              } catch (uploadErr) {
+                console.error("Cloudinary upload error:", uploadErr);
               }
-            } catch (uploadErr) {
-              // Skip this one file if it truly can't upload after retries; keep the rest.
-              console.error("Image upload failed for a file:", uploadErr);
             }
           }
           imageUrlMap[id] = urls.join(", ");
+        } else if (item.image instanceof File) {
+          try {
+            const url = await uploadImageToCloudinary(item.image);
+            if (url) imageUrlMap[id] = url;
+          } catch (uploadErr) {
+            console.error("Cloudinary upload error:", uploadErr);
+          }
         }
       }
 
-      // Prepare submission data
+      // Update in Supabase Checklist table
       for (const id of selectedItemsArray) {
         const item = accountData.find((account) => account._id === id);
-        submissionData.push({
-          taskId: item["col1"], // Column B
-          rowIndex: item._rowIndex,
-          actualDate: todayFormatted, // Column K (formatted as DD/MM/YYYY HH:MM:SS)
-          status: additionalData[id] || "", // Column M
-          remarks: remarksData[id] || "", // Column N
-          imageUrl: imageUrlMap[id] || (item.image && typeof item.image === "string" ? item.image : ""), // Column O
-        });
+        if (!item) continue;
+
+        const taskId = item['col1'] ? parseInt(item['col1'], 10) : item._taskId;
+
+        const updatePayload = {
+          Actual: currentTimestamp,
+          Status: additionalData[id] || "Yes",
+          Remarks: remarksData[id] || "",
+        };
+
+        if (imageUrlMap[id]) {
+          updatePayload['Uploaded Image'] = imageUrlMap[id];
+        }
+
+        const { error: updateErr } = await supabase
+          .from('Checklist')
+          .update(updatePayload)
+          .eq('Task ID', taskId);
+
+        if (updateErr) {
+          console.error("Failed to update task in Supabase:", taskId, updateErr);
+        }
       }
 
       // Optimistic UI updates
@@ -1425,10 +1355,10 @@ function AccountDataPage() {
         const item = accountData.find((account) => account._id === id);
         return {
           ...item,
-          col10: todayFormatted, // Column K
-          col12: additionalData[id] || "", // Column M
-          col13: remarksData[id] || "", // Column N
-          col14: imageUrlMap[id] || (item.image && typeof item.image === "string" ? item.image : ""), // Column O
+          col10: todayFormatted,
+          col12: additionalData[id] || "Yes",
+          col13: remarksData[id] || "",
+          col14: imageUrlMap[id] || (item.image && typeof item.image === "string" ? item.image : ""),
         };
       });
 
@@ -1440,27 +1370,11 @@ function AccountDataPage() {
       setRemarksData({});
       setSuccessMessage(`Successfully submitted ${selectedItemsArray.length} task(s)!`);
 
-      // Submit to Google Sheets (retried + safe-parsed). Failures here are logged, not alerted:
-      // the UI already reflects success optimistically, and a transient network error on the
-      // final write shouldn't scare the user with an error popup.
-      const formData = new FormData();
-      formData.append("sheetName", CONFIG.SHEET_NAME);
-      formData.append("action", "updateTaskData");
-      formData.append("rowData", JSON.stringify(submissionData));
-
-      try {
-        const result = await postToAppsScript(formData);
-        if (!result || !result.success) {
-          console.error("Background submission failed:", result && result.error);
-        }
-        // Immediately fetch fresh sheet data to ensure UI is 100% in sync
-        fetchSheetData();
-      } catch (submitErr) {
-        console.error("Background submission failed:", submitErr);
-      }
+      // Refresh data
+      await fetchSheetData();
     } catch (error) {
       console.error("Submission error:", error);
-      alert("Error occurred during submission. Please try again.");
+      alert("Error occurred during submission: " + (error.message || error));
     } finally {
       setIsSubmitting(false);
     }

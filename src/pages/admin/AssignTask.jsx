@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { BellRing, FileCheck, Calendar, Clock, Mic, MicOff, X } from "lucide-react";
-import AdminLayout from "../../components/layout/AdminLayout";
+import AdminLayout from "../../components/layout/AdminLayout"
+import { supabase } from "../../lib/supabaseClient";
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 
 const TaskTypePopup = ({ isOpen, onClose, onSelect }) => {
@@ -1058,9 +1059,7 @@ export default function AssignTask() {
 
     try {
       if (generatedTasks.length === 0) {
-        alert(
-          "Please generate tasks first by clicking Preview Generated Tasks"
-        );
+        alert("Please generate tasks first by clicking Preview Generated Tasks");
         setIsSubmitting(false);
         return;
       }
@@ -1071,136 +1070,111 @@ export default function AssignTask() {
         return;
       }
 
-      // Determine the main sheet based on task type
-      let submitSheetName;
+      const now = new Date();
+      const currentTimestamp = now.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+
       if (formData.taskType === "delegation") {
-        submitSheetName = "DELEGATION";
+        // Insert into Delegation table
+        const { data: delLast } = await supabase
+          .from('Delegation')
+          .select('Task ID')
+          .order('Task ID', { ascending: false })
+          .limit(1);
+
+        let nextId = 1;
+        if (delLast && delLast.length > 0 && delLast[0]['Task ID']) {
+          nextId = (parseInt(delLast[0]['Task ID'], 10) || 0) + 1;
+        }
+
+        const tasksToInsert = generatedTasks.map((t, idx) => ({
+          'Task ID': nextId + idx,
+          Timestamp: currentTimestamp,
+          Department: formData.department,
+          'Given By': formData.givenBy || 'Admin',
+          Name: formData.doer,
+          'Task Description': formData.description,
+          'Task Start Date': t.dueDate.split(' ')[0] || formatDateToDDMMYYYY(date || now),
+          Freq: formData.frequency,
+          'Enable Reminders': formData.enableReminders ? 'Yes' : 'No',
+          'Require Attachment': formData.requireAttachment ? 'Yes' : 'No',
+          Status: 'Pending'
+        }));
+
+        const { error: insErr } = await supabase.from('Delegation').insert(tasksToInsert);
+        if (insErr) throw insErr;
+
       } else {
-        submitSheetName = "UNIQUE";
-      }
+        // Checklist task: Insert into Unique recurring template table
+        const { data: uLast } = await supabase
+          .from('Unique')
+          .select('Task ID')
+          .order('Task ID', { ascending: false })
+          .limit(1);
 
-      // Check if selected date is today
-      const isToday = () => {
-        if (!date) return false;
-        const today = new Date();
-        const selectedDate = new Date(date);
+        let nextId = 1;
+        if (uLast && uLast.length > 0 && uLast[0]['Task ID']) {
+          nextId = (parseInt(uLast[0]['Task ID'], 10) || 0) + 1;
+        }
 
-        today.setHours(0, 0, 0, 0);
-        selectedDate.setHours(0, 0, 0, 0);
+        const dateStr = formatDateToDDMMYYYY(date || now);
 
-        return selectedDate.getTime() === today.getTime();
-      };
+        const templateRow = {
+          'Task ID': nextId,
+          Timestamp: currentTimestamp,
+          Department: formData.department,
+          'Give By': formData.givenBy || 'Admin',
+          Name: formData.doer,
+          'Task Description': formData.description,
+          'Task Start date': dateStr,
+          Frequency: formData.frequency,
+          'Enable Reminder': formData.enableReminders ? 'Yes' : 'No',
+          'Require Attatchment': formData.requireAttachment ? 'Yes' : 'No',
+          'Last Date': null
+        };
 
-      let tasksToSubmit = generatedTasks;
+        const { error: uErr } = await supabase.from('Unique').insert([templateRow]);
+        if (uErr) throw uErr;
 
-      // If today's date is selected, only submit today's task
-      if (isToday()) {
-        const todayDateStr = formatDateToDDMMYYYY(date);
-        tasksToSubmit = generatedTasks.filter((task) => {
-          const taskDateStr = task.dueDate.split(" ")[0]; // Get date part (DD/MM/YYYY)
-          return taskDateStr === todayDateStr;
-        });
+        // Also if start date is today, generate immediate task instance in Checklist table
+        const todayStr = formatDateToDDMMYYYY(now);
+        if (dateStr === todayStr) {
+          const { data: cLast } = await supabase
+            .from('Checklist')
+            .select('Task ID')
+            .order('Task ID', { ascending: false })
+            .limit(1);
 
-        if (tasksToSubmit.length === 0) {
-          tasksToSubmit = [generatedTasks[0]]; // Fallback to first task
+          let nextCId = 1;
+          if (cLast && cLast.length > 0 && cLast[0]['Task ID']) {
+            nextCId = (parseInt(cLast[0]['Task ID'], 10) || 0) + 1;
+          }
+
+          await supabase.from('Checklist').insert([{
+            'Task ID': nextCId,
+            Timestamp: currentTimestamp,
+            Department: formData.department,
+            'Given By': formData.givenBy || 'Admin',
+            Name: formData.doer,
+            'Tast Descriptions': formData.description,
+            'Task Start Date': todayStr,
+            Freq: formData.frequency,
+            'Enable Reminders': formData.enableReminders ? 'Yes' : 'No',
+            'Require Attachment': formData.requireAttachment ? 'Yes' : 'No',
+            Status: null
+          }]);
+
+          // Update Unique Last Date to today
+          await supabase.from('Unique').update({ 'Last Date': todayStr }).eq('Task ID', nextId);
         }
       }
 
-      // Get task IDs for main sheet
-      const lastTaskIdMain = await getLastTaskId(submitSheetName);
-      let nextTaskIdMain = lastTaskIdMain + 1;
-
-      // Prepare tasks data
-      const tasksDataMain = tasksToSubmit.map((task, index) => ({
-        timestamp: getCurrentTimestamp(),
-        taskId: (nextTaskIdMain + index).toString(),
-        firm: task.department,
-        givenBy: task.givenBy,
-        name: task.doer,
-        description: task.description,
-        startDate: task.dueDate,
-        freq: task.frequency,
-        enableReminders: task.enableReminders ? "Yes" : "No",
-        requireAttachment: task.requireAttachment ? "Yes" : "No",
-      }));
-
-      // Submit to main sheet (Delegation / Checklist)
-      const formPayloadMain = new FormData();
-      formPayloadMain.append("sheetName", submitSheetName);
-      formPayloadMain.append("action", "insert");
-      formPayloadMain.append("batchInsert", "true");
-      formPayloadMain.append("rowData", JSON.stringify(tasksDataMain));
-
-      await fetch(
-        "https://script.google.com/macros/s/AKfycbyAy98t3XAyRP3pFE7XOoDiTDU3Yc9WOIFayRXELW2XnUAzl7yE9bnO94GvZV0wJkH_/exec",
-        {
-          method: "POST",
-          body: formPayloadMain,
-          mode: "no-cors",
-        }
-      );
-
-      // ✅ Submit to UNIQUE sheet only if:
-      // 1. Task type is "checklist" AND 
-      // 2. Frequency is NOT "one-time", "critical", or "urgent"
-      const isDelegationFrequency = ["one-time", "critical", "urgent"].includes(formData.frequency);
-
-      // if (formData.taskType === "checklist" && !isDelegationFrequency) {
-      //   const lastTaskIdUnique = await getLastTaskId("UNIQUE");
-      //   let nextTaskIdUnique = lastTaskIdUnique + 1;
-
-      //   const tasksDataUnique = tasksToSubmit.map((task, index) => ({
-      //     timestamp: getCurrentTimestamp(),
-      //     taskId: (nextTaskIdUnique + index).toString(),
-      //     firm: task.department,
-      //     givenBy: task.givenBy,
-      //     name: task.doer,
-      //     description: task.description,
-      //     startDate: task.dueDate,
-      //     freq: task.frequency,
-      //     enableReminders: task.enableReminders ? "Yes" : "No",
-      //     requireAttachment: task.requireAttachment ? "Yes" : "No",
-      //   }));
-
-      //   const formPayloadUnique = new FormData();
-      //   formPayloadUnique.append("sheetName", "UNIQUE");
-      //   formPayloadUnique.append("action", "insert");
-      //   formPayloadUnique.append("batchInsert", "true");
-      //   formPayloadUnique.append("rowData", JSON.stringify(tasksDataUnique));
-
-      //   await fetch(
-      //     "https://script.google.com/macros/s/AKfycbyAy98t3XAyRP3pFE7XOoDiTDU3Yc9WOIFayRXELW2XnUAzl7yE9bnO94GvZV0wJkH_/exec",
-      //     {
-      //       method: "POST",
-      //       body: formPayloadUnique,
-      //       mode: "no-cors",
-      //     }
-      //   );
-      // }
-
-      // Success message
-      const taskCount = tasksToSubmit.length;
-      let successMessage = `Successfully submitted ${taskCount} task(s) to ${submitSheetName}`;
-
-      if (formData.taskType === "checklist" && !isDelegationFrequency) {
-        successMessage += ` and UNIQUE sheets!`;
-      }
-      if (isToday()) {
-        successMessage =
-          `Today's date selected - submitted ${taskCount} task(s) to ${submitSheetName}` +
-          (formData.taskType === "checklist" && !isDelegationFrequency ? " and UNIQUE sheets!" : "!");
-      }
-
-      // alert(successMessage);
+      alert(`Successfully created and assigned ${formData.taskType} task in Supabase!`);
 
       // Reset form
-      const userRole = sessionStorage.getItem("role");
-      const username = sessionStorage.getItem("username");
-
       setFormData({
         department: "",
         givenBy: "",
-        doer: userRole !== "admin" && username ? formData.doer : "",
+        doer: "",
         description: "",
         frequency: "daily",
         enableReminders: true,
@@ -1210,16 +1184,17 @@ export default function AssignTask() {
       setTime("09:00");
       setGeneratedTasks([]);
       setAccordionOpen(false);
-      handleTaskAssignmentSuccess();
+      if (typeof handleTaskAssignmentSuccess === 'function') {
+        handleTaskAssignmentSuccess();
+      }
     } catch (error) {
-      console.error("Submission error:", error);
-      alert("Failed to assign tasks. Please try again.");
+      console.error("Assign task submission error:", error);
+      alert("Failed to assign tasks: " + (error.message || error));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Helper function to format date for display in preview
   const formatDateForDisplay = (dateTimeStr) => {
     // dateTimeStr is in format "DD/MM/YYYY HH:MM:SS"
     return dateTimeStr;

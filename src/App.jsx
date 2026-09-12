@@ -15,6 +15,7 @@ import QuickTask from "./pages/QuickTask"
 
 import TrainingVideo from "./pages/TrainingVideo"
 import MaintenancePage from "./pages/MaintenancePage"
+import AdminSettings from "./pages/admin/AdminSettings"
 
 // System-wide maintenance switch: when true, every logged-in route shows the
 // maintenance page instead of its normal content. Login still works. Flip
@@ -41,102 +42,106 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
 }
 
 function AppRoutes() {
-  const location = useLocation()
-
   return (
-    <AnimatePresence mode="wait" initial={false}>
-      <Routes location={location} key={location.pathname}>
-        {/* Root redirect */}
-        <Route path="/" element={<Navigate to="/login" replace />} />
+    <Routes>
+      {/* Root redirect */}
+      <Route path="/" element={<Navigate to="/login" replace />} />
 
-        {/* Login route */}
-        <Route path="/login" element={<LoginPage />} />
+      {/* Login route */}
+      <Route path="/login" element={<LoginPage />} />
 
-        {/* Dashboard redirect */}
-        <Route path="/dashboard" element={<Navigate to="/dashboard/admin" replace />} />
+      {/* Dashboard redirect */}
+      <Route path="/dashboard" element={<Navigate to="/dashboard/admin" replace />} />
 
-        {/* Admin & User Dashboard route */}
-        <Route
-          path="/dashboard/admin"
-          element={
-            <ProtectedRoute>
-              <AdminDashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/dashboard/quick-task"
-          element={
-            <ProtectedRoute allowedRoles={["admin", "user"]}>
-              <QuickTask />
-            </ProtectedRoute>
-          }
-        />
-        {/* Assign Task route - only for admin */}
-        <Route
-          path="/dashboard/assign-task"
-          element={
-            <ProtectedRoute allowedRoles={["admin", "user"]}>
-              <AdminAssignTask />
-            </ProtectedRoute>
-          }
-        />
+      {/* Admin & User Dashboard route */}
+      <Route
+        path="/dashboard/admin"
+        element={
+          <ProtectedRoute>
+            <AdminDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard/quick-task"
+        element={
+          <ProtectedRoute allowedRoles={["admin", "user"]}>
+            <QuickTask />
+          </ProtectedRoute>
+        }
+      />
+      {/* Assign Task route - only for admin */}
+      <Route
+        path="/dashboard/assign-task"
+        element={
+          <ProtectedRoute allowedRoles={["admin", "user"]}>
+            <AdminAssignTask />
+          </ProtectedRoute>
+        }
+      />
 
-        {/* Delegation route for user */}
-        <Route
-          path="/dashboard/delegation"
-          element={
-            <ProtectedRoute>
-              <AccountDataPage />
-            </ProtectedRoute>
-          }
-        />
+      {/* Delegation route for user */}
+      <Route
+        path="/dashboard/delegation"
+        element={
+          <ProtectedRoute>
+            <AccountDataPage />
+          </ProtectedRoute>
+        }
+      />
 
-        {/* Data routes */}
-        <Route
-          path="/dashboard/data/:category"
-          element={
-            <ProtectedRoute>
-              <DataPage />
-            </ProtectedRoute>
-          }
-        />
+      {/* Data routes */}
+      <Route
+        path="/dashboard/data/:category"
+        element={
+          <ProtectedRoute>
+            <DataPage />
+          </ProtectedRoute>
+        }
+      />
 
+      <Route
+        path="/dashboard/traning-video"
+        element={
+          <ProtectedRoute>
+            <TrainingVideo />
+          </ProtectedRoute>
+        }
+      />
 
+      {/* Admin Settings & Task Automation Triggers */}
+      <Route
+        path="/dashboard/settings"
+        element={
+          <ProtectedRoute>
+            <AdminSettings />
+          </ProtectedRoute>
+        }
+      />
 
-        <Route
-          path="/dashboard/traning-video"
-          element={
-            <ProtectedRoute>
-              <TrainingVideo />
-            </ProtectedRoute>
-          }
-        />
+      {/* Specific route for Admin Data Page */}
+      <Route
+        path="/dashboard/data/admin"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <AdminDataPage />
+          </ProtectedRoute>
+        }
+      />
 
-        {/* Specific route for Admin Data Page */}
-        <Route
-          path="/dashboard/data/admin"
-          element={
-            <ProtectedRoute allowedRoles={["admin"]}>
-              <AdminDataPage />
-            </ProtectedRoute>
-          }
-        />
+      {/* Backward compatibility redirects */}
+      <Route path="/admin/*" element={<Navigate to="/dashboard/admin" replace />} />
+      <Route path="/admin/dashboard" element={<Navigate to="/dashboard/admin" replace />} />
+      <Route parh="/admin/quick-task" element={<Navigate to="/dashboard/quick-task" replace />} />
+      <Route path="/admin/assign-task" element={<Navigate to="/dashboard/assign-task" replace />} />
+      <Route path="/admin/data/:category" element={<Navigate to="/dashboard/data/:category" replace />} />
 
-        {/* Backward compatibility redirects */}
-        <Route path="/admin/*" element={<Navigate to="/dashboard/admin" replace />} />
-        <Route path="/admin/dashboard" element={<Navigate to="/dashboard/admin" replace />} />
-        <Route parh="/admin/quick-task" element={<Navigate to="/dashboard/quick-task" replace />} />
-        <Route path="/admin/assign-task" element={<Navigate to="/dashboard/assign-task" replace />} />
-        <Route path="/admin/data/:category" element={<Navigate to="/dashboard/data/:category" replace />} />
-
-        <Route path="/admin/traning-video" element={<Navigate to="/dashboard/traning-video" replace />} />
-        <Route path="/user/*" element={<Navigate to="/dashboard/admin" replace />} />
-        
-        {/* Catch-all route to redirect unknown URLs to dashboard */}
-        <Route path="*" element={<Navigate to="/dashboard/admin" replace />} />
-      </Routes>
-    </AnimatePresence>
+      <Route path="/admin/traning-video" element={<Navigate to="/dashboard/traning-video" replace />} />
+      <Route path="/user/*" element={<Navigate to="/dashboard/admin" replace />} />
+      
+      {/* Catch-all route to redirect unknown URLs to dashboard */}
+      <Route path="*" element={<Navigate to="/dashboard/admin" replace />} />
+    </Routes>
   )
 }
 

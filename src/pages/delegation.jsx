@@ -15,6 +15,8 @@ import {
   RefreshCw
 } from "lucide-react";
 import AdminLayout from "../components/layout/AdminLayout";
+import { supabase } from "../lib/supabaseClient";
+import { uploadImageToCloudinary } from "../lib/cloudinary";
 
 const CONFIG = {
   APPS_SCRIPT_URL:
@@ -594,173 +596,87 @@ function DelegationDataPage() {
         setError(null);
       }
 
-      // Parallel fetch both sheets for better performance
+      // Parallel fetch both tables from Supabase
       const [mainResponse, historyResponse] = await Promise.all([
-        fetch(
-          `${CONFIG.APPS_SCRIPT_URL}?sheet=${CONFIG.SOURCE_SHEET_NAME}&action=fetch`
-        ),
-        fetch(
-          `${CONFIG.APPS_SCRIPT_URL}?sheet=${CONFIG.TARGET_SHEET_NAME}&action=fetch`
-        ).catch(() => null),
+        supabase.from('Delegation').select('*').order('Task ID', { ascending: false }).limit(2500),
+        supabase.from('DELEGATION DONE').select('*').order('id', { ascending: false }).limit(2500)
       ]);
 
-      if (!mainResponse.ok) {
-        throw new Error(`Failed to fetch data: ${mainResponse.status}`);
-      }
-
-      // Process main data
-      const mainText = await mainResponse.text();
-      let data;
-      try {
-        data = JSON.parse(mainText);
-      } catch (parseError) {
-        const jsonStart = mainText.indexOf("{");
-        const jsonEnd = mainText.lastIndexOf("}");
-        if (jsonStart !== -1 && jsonEnd !== -1) {
-          const jsonString = mainText.substring(jsonStart, jsonEnd + 1);
-          data = JSON.parse(jsonString);
-        } else {
-          throw new Error("Invalid JSON response from server");
-        }
-      }
+      if (mainResponse.error) throw mainResponse.error;
 
       // Process history data if available
       let processedHistoryData = [];
-      if (historyResponse && historyResponse.ok) {
-        try {
-          const historyText = await historyResponse.text();
-          let historyData;
-          try {
-            historyData = JSON.parse(historyText);
-          } catch (parseError) {
-            const jsonStart = historyText.indexOf("{");
-            const jsonEnd = historyText.lastIndexOf("}");
-            if (jsonStart !== -1 && jsonEnd !== -1) {
-              const jsonString = historyText.substring(jsonStart, jsonEnd + 1);
-              historyData = JSON.parse(jsonString);
+      if (historyResponse.data) {
+        processedHistoryData = historyResponse.data.map((row, rowIndex) => {
+          return {
+            _id: Math.random().toString(36).substring(2, 15),
+            _rowIndex: rowIndex + 2, // Supabase id or just index
+            col0: row['Timestamp'] || "",
+            col1: row['Task id'] || "",
+            col2: row['Status'] || "",
+            col3: row['Next extend date'] || "",
+            col4: row['Reason'] || "",
+            col5: row['Upload Image'] || "",
+            col6: row['Condition Date'] || "",
+            col7: row['Name'] || "",
+            col8: row['Task Description'] || "",
+            col9: row['Given By'] || "",
+            col10: row['Admin Done'] || "",
+            col15: row['Admin Done'] || "" // Map Admin Done to col15 as expected by some components
+          };
+        });
+      }
+      setHistoryData(processedHistoryData);
+
+      const allDelegationData = [];
+      if (mainResponse.data) {
+        mainResponse.data.forEach((row, rowIndex) => {
+          const taskId = row['Task ID'] || "";
+          const stableId = taskId ? `task_${taskId}_${rowIndex}` : `row_${rowIndex}_${Math.random().toString(36).substring(2, 15)}`;
+
+          const rowData = {
+            _id: stableId,
+            _rowIndex: rowIndex + 2,
+            _taskId: taskId,
+            col0: row['Timestamp'] || "",
+            col1: row['Task ID'] || "",
+            col2: row['Department'] || "",
+            col3: row['Given By'] || "",
+            col4: row['Name'] || "",
+            col5: row['Task Description'] || "",
+            col6: row['Task Start Date'] || "",
+            col7: row['Freq'] || "",
+            col8: row['Enable Reminders'] || "",
+            col9: row['Require Attachment'] || "",
+            col10: row['Planned Date'] || "",
+            col11: row['Actual'] || "",
+            col12: row['Delay'] || "",
+            col13: row['Status'] || "",
+            col14: row['Remarks'] || "",
+            col15: row['Upload Imgage'] || "",
+            col16: row['Update Date'] || "",
+            col17: row['Color Code For'] || "",
+            col18: row['Color Code'] || "",
+            col19: row['Admin Done'] || "",
+            col20: row['Filter Condition'] || ""
+          };
+
+          if (userRole !== "admin") {
+            const taskAssignedTo = rowData["col4"];
+            if (!taskAssignedTo || taskAssignedTo.toLowerCase().trim() !== username.toLowerCase().trim()) {
+              return;
             }
           }
 
-          if (historyData && historyData.table && historyData.table.rows) {
-            processedHistoryData = historyData.table.rows
-              .map((row, rowIndex) => {
-                if (rowIndex === 0) return null;
-
-                const rowData = {
-                  _id: Math.random().toString(36).substring(2, 15),
-                  _rowIndex: rowIndex + 1,
-                };
-
-                const rowValues = row.c
-                  ? row.c.map((cell) =>
-                    cell && cell.v !== undefined ? cell.v : ""
-                  )
-                  : [];
-
-                // Map all columns including column H (col7) for user filtering, column I (col8) for Task, and column P (col15) for Admin Done
-                for (let i = 0; i < 16; i++) {
-                  if (i === 0 || i === 6 || i === 10) {
-                    rowData[`col${i}`] = rowValues[i]
-                      ? parseGoogleSheetsDate(String(rowValues[i]))
-                      : "";
-                  } else {
-                    rowData[`col${i}`] = rowValues[i] || "";
-                  }
-                }
-
-                return rowData;
-              })
-              .filter((row) => row !== null);
+          const taskStatus = rowData["col20"];
+          if (taskStatus && taskStatus.toString().trim().toLowerCase() === "done") {
+            return;
           }
-        } catch (historyError) {
-          console.error("Error processing history data:", historyError);
-        }
+
+          allDelegationData.push(rowData);
+        });
       }
 
-      // console.log("processedHistoryData", processedHistoryData);
-
-      setHistoryData(processedHistoryData);
-
-      // Process main delegation data - ADD USER FILTERING LOGIC
-      // Process main delegation data - ADD USER FILTERING LOGIC
-      const allDelegationData = [];
-
-      let rows = [];
-      if (data.table && data.table.rows) {
-        rows = data.table.rows;
-      } else if (Array.isArray(data)) {
-        rows = data;
-      } else if (data.values) {
-        rows = data.values.map((row) => ({
-          c: row.map((val) => ({ v: val })),
-        }));
-      }
-
-      // Inside the fetchSheetData function, update the data processing section:
-      rows.forEach((row, rowIndex) => {
-        if (rowIndex === 0) return; // Skip header row
-
-        let rowValues = [];
-        if (row.c) {
-          rowValues = row.c.map((cell) =>
-            cell && cell.v !== undefined ? cell.v : ""
-          );
-        } else if (Array.isArray(row)) {
-          rowValues = row;
-        } else {
-          return;
-        }
-
-        const googleSheetsRowIndex = rowIndex + 1;
-        const taskId = rowValues[1] || "";
-        const stableId = taskId
-          ? `task_${taskId}_${googleSheetsRowIndex}`
-          : `row_${googleSheetsRowIndex}_${Math.random()
-            .toString(36)
-            .substring(2, 15)}`;
-
-        const rowData = {
-          _id: stableId,
-          _rowIndex: googleSheetsRowIndex,
-          _taskId: taskId,
-        };
-
-        // Map all columns including timestamp (column A)
-        for (let i = 0; i < 21; i++) {
-          if (i === 0 || i === 6 || i === 10) {
-            // Column A (0), G (6), K (10) are dates
-            rowData[`col${i}`] = rowValues[i]
-              ? parseGoogleSheetsDate(String(rowValues[i]))
-              : "";
-          } else {
-            rowData[`col${i}`] = rowValues[i] || "";
-          }
-        }
-
-        // ✅ User filtering logic
-        if (userRole !== "admin") {
-          const taskAssignedTo = rowData["col4"]; // Column E (Name)
-          if (
-            !taskAssignedTo ||
-            taskAssignedTo.toLowerCase().trim() !== username.toLowerCase().trim()
-          ) {
-            return; // Skip if not assigned to this user
-          }
-        }
-
-        // ✅ NEW: Filter out "Done" tasks from regular view
-        const taskStatus = rowData["col20"]; // Column U (Status)
-        if (taskStatus && taskStatus.toString().trim().toLowerCase() === "done") {
-          return; // Skip Done tasks from regular view
-        }
-
-        allDelegationData.push(rowData);
-      });
-
-      // Preserve any image a user has locally attached but not submitted yet —
-      // a background refresh (15s poll) would otherwise overwrite accountData
-      // with fresh server data that has no idea about that local attachment,
-      // making the just-picked image silently disappear before submit.
       setAccountData((prev) => {
         const localImages = new Map();
         prev.forEach((item) => {
@@ -774,15 +690,9 @@ function DelegationDataPage() {
       });
       setDelegationData(allDelegationData);
       hasLoadedOnceRef.current = true;
-      try {
-        localStorage.setItem("delegation_page_cache_v1", JSON.stringify(allDelegationData));
-      } catch (e) { /* ignore quota errors */ }
       if (!isBackground) setLoading(false);
     } catch (error) {
       console.error("Error fetching sheet data:", error);
-      // A silent background poll that fails (transient network/Apps Script
-      // hiccup) shouldn't blank out data that's already on screen — only
-      // surface the error if we have nothing loaded yet to fall back on.
       if (!isBackground || !hasLoadedOnceRef.current) {
         setError("Failed to load account data: " + error.message);
       }
@@ -798,23 +708,8 @@ function DelegationDataPage() {
   ]);
 
   useEffect(() => {
-    // Show cached data from the last visit instantly (no spinner flash) when
-    // navigating back to this page, then quietly refresh it in the background.
-    let cameFromCache = false;
-    try {
-      const cached = localStorage.getItem("delegation_page_cache_v1");
-      if (cached) {
-        const parsedCache = JSON.parse(cached);
-        if (Array.isArray(parsedCache) && parsedCache.length > 0) {
-          setAccountData(parsedCache);
-          setDelegationData(parsedCache);
-          setLoading(false);
-          hasLoadedOnceRef.current = true;
-          cameFromCache = true;
-        }
-      }
-    } catch (e) { /* ignore corrupt cache */ }
-    fetchSheetData(cameFromCache);
+    // 100% Real-time direct fetch
+    fetchSheetData(false);
   }, [fetchSheetData]);
 
   // Near-real-time refresh: silently re-fetch every 15s in the background so
@@ -967,250 +862,96 @@ function DelegationDataPage() {
       return;
     }
 
+    // Validation checks
     const missingStatus = selectedItemsArray.filter((id) => !statusData[id]);
     if (missingStatus.length > 0) {
-      alert(
-        `Please select a status for all selected items. ${missingStatus.length} item(s) are missing status.`
-      );
+      alert("Please select a status for all selected items");
       return;
     }
 
-    const missingNextDate = selectedItemsArray.filter(
+    const missingExtendDate = selectedItemsArray.filter(
       (id) => statusData[id] === "Extend date" && !nextTargetDate[id]
     );
-    if (missingNextDate.length > 0) {
-      alert(
-        `Please select a next target date for all items with "Extend date" status. ${missingNextDate.length} item(s) are missing target date.`
-      );
+    if (missingExtendDate.length > 0) {
+      alert("Please select a next extend date for items marked as 'Extend date'");
       return;
     }
 
-    const missingRequiredImages = selectedItemsArray.filter((id) => {
-      const item = accountData.find((account) => account._id === id);
-      const requiresAttachment =
-        item["col9"] && item["col9"].toUpperCase() === "YES";
-      return requiresAttachment && !item.image;
-    });
-
-    if (missingRequiredImages.length > 0) {
-      alert(
-        `Please upload images for all required attachments. ${missingRequiredImages.length} item(s) are missing required images.`
-      );
+    const missingReason = selectedItemsArray.filter(
+      (id) => statusData[id] === "Extend date" && (!remarksData[id] || remarksData[id].trim() === "")
+    );
+    if (missingReason.length > 0) {
+      alert("Please provide a reason for all items marked as 'Extend date'");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const today = new Date();
-      const dateForSubmission = formatDateForGoogleSheets(today);
+      const username = sessionStorage.getItem("username") || "";
+      const now = new Date();
+      const currentTimestamp = now.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
-      // Separate tasks by type: Verify Pending vs Regular tasks
-      const verifyPendingTasks = [];
-      const regularTasks = [];
+      const rowsToInsert = [];
 
-      selectedItemsArray.forEach((id) => {
+      for (const id of selectedItemsArray) {
         const item = accountData.find((account) => account._id === id);
-        const isVerifyPending = item["col20"] === "Verify Pending";
+        if (!item) continue;
 
-        if (isVerifyPending) {
-          verifyPendingTasks.push({ id, item });
-        } else {
-          regularTasks.push({ id, item });
+        let imageUrl = "";
+        if (item.image instanceof File) {
+          try {
+            imageUrl = await uploadImageToCloudinary(item.image);
+          } catch (uploadErr) {
+            console.error("Cloudinary upload error:", uploadErr);
+          }
         }
-      });
 
-      // Process Verify Pending tasks (update existing records in DELEGATION DONE)
-      if (verifyPendingTasks.length > 0) {
-        await processVerifyPendingTasks(verifyPendingTasks, statusData);
+        let formattedNextDate = "";
+        if (nextTargetDate[id]) {
+          const d = new Date(nextTargetDate[id]);
+          if (!isNaN(d.getTime())) {
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear();
+            formattedNextDate = `${day}/${month}/${year}`;
+          }
+        }
+
+        const conditionDate = formattedNextDate || currentTimestamp;
+
+        rowsToInsert.push({
+          Timestamp: currentTimestamp,
+          'Task id': parseInt(item['col1'] || '0', 10) || item['col1'],
+          Status: statusData[id] || 'Done',
+          'Next extend date': formattedNextDate,
+          Reason: remarksData[id] || '',
+          'Upload Image': imageUrl,
+          'Condition Date': conditionDate,
+          Name: username || item['col4'] || '',
+          'Task Description': item['col5'] || '',
+          'Given By': item['col3'] || 'Admin',
+          'Admin Done': null
+        });
       }
 
-      // Process Regular tasks (create new records in DELEGATION DONE)
-      if (regularTasks.length > 0) {
-        await processRegularTasks(regularTasks, dateForSubmission, remarksData, nextTargetDate, statusData);
+      if (rowsToInsert.length > 0) {
+        const { error: insertErr } = await supabase.from('DELEGATION DONE').insert(rowsToInsert);
+        if (insertErr) throw insertErr;
       }
 
-      // Update local state - remove submitted items
-      setAccountData((prev) =>
-        prev.filter((item) => !selectedItems.has(item._id))
-      );
-
-      const successMessage = [];
-      if (verifyPendingTasks.length > 0) {
-        successMessage.push(`marked ${verifyPendingTasks.length} Verify Pending tasks as Done`);
-      }
-      if (regularTasks.length > 0) {
-        successMessage.push(`submitted ${regularTasks.length} regular tasks`);
-      }
-
-      setSuccessMessage(
-        `Successfully ${successMessage.join(' and ')}!`
-      );
       setSelectedItems(new Set());
-      setAdditionalData({});
-      setRemarksData({});
       setStatusData({});
+      setRemarksData({});
       setNextTargetDate({});
+      setSuccessMessage(`Successfully submitted ${selectedItemsArray.length} task(s)!`);
 
-      setTimeout(() => {
-        fetchSheetData();
-      }, 2000);
+      await fetchSheetData();
     } catch (error) {
-      console.error("Submission error:", error);
-      alert("Failed to submit task records: " + error.message);
+      console.error("Delegation submission error:", error);
+      alert("Failed to submit data: " + (error.message || error));
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  // NEW: Process Verify Pending tasks (update existing records)
-  const processVerifyPendingTasks = async (tasks, statusData) => {
-    const batchSize = 5;
-
-    for (let i = 0; i < tasks.length; i += batchSize) {
-      const batch = tasks.slice(i, i + batchSize);
-
-      await Promise.all(
-        batch.map(async ({ id, item }) => {
-          // For Verify Pending tasks, we need to find the existing record in history
-          // and update its Admin Done column (Column P) to "Done"
-          const existingHistoryItem = historyData.find(
-            history => history["col1"] === item["col1"] // Match by Task ID
-          );
-
-          if (!existingHistoryItem) {
-            throw new Error(`No existing record found for Verify Pending task: ${item["col1"]}`);
-          }
-
-          const updateData = {
-            taskId: item["col1"],
-            rowIndex: existingHistoryItem._rowIndex,
-            adminDoneStatus: "Done"
-          };
-
-          const formData = new FormData();
-          formData.append("sheetName", CONFIG.TARGET_SHEET_NAME);
-          formData.append("action", "updateAdminDone");
-          formData.append("rowData", JSON.stringify([updateData]));
-
-          const response = await fetch(CONFIG.APPS_SCRIPT_URL, {
-            method: "POST",
-            body: formData,
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-
-          const result = await response.json();
-          if (!result.success) {
-            throw new Error(result.error || "Failed to update Verify Pending task");
-          }
-
-          return result;
-        })
-      );
-    }
-  };
-
-  // NEW: Process Regular tasks (create new records)
-  const processRegularTasks = async (tasks, dateForSubmission, remarksData, nextTargetDate, statusData) => {
-    const batchSize = 5;
-
-    for (let i = 0; i < tasks.length; i += batchSize) {
-      const batch = tasks.slice(i, i + batchSize);
-
-      await Promise.all(
-        batch.map(async ({ id, item }) => {
-          let imageUrl = "";
-
-          if (item.image instanceof File) {
-            try {
-              const base64Data = await fileToBase64(item.image);
-
-              const uploadFormData = new FormData();
-              uploadFormData.append("action", "uploadFile");
-              uploadFormData.append("base64Data", base64Data);
-              uploadFormData.append(
-                "fileName",
-                `task_${item["col1"]}_${Date.now()}.${item.image.name
-                  .split(".")
-                  .pop()}`
-              );
-              uploadFormData.append("mimeType", item.image.type);
-              uploadFormData.append("folderId", CONFIG.DRIVE_FOLDER_ID);
-
-              const uploadResponse = await fetch(CONFIG.APPS_SCRIPT_URL, {
-                method: "POST",
-                body: uploadFormData,
-              });
-
-              const uploadResult = await uploadResponse.json();
-              if (uploadResult.success) {
-                imageUrl = uploadResult.fileUrl;
-              }
-            } catch (uploadError) {
-              console.error("Error uploading image:", uploadError);
-            }
-          }
-
-          // Format the next target date properly if it exists
-          let formattedNextTargetDate = "";
-          let nextTargetDateForGoogleSheets = null;
-
-          if (nextTargetDate[id]) {
-            const convertedDate = convertToGoogleSheetsDate(
-              nextTargetDate[id]
-            );
-            formattedNextTargetDate = convertedDate.formatted;
-            nextTargetDateForGoogleSheets = convertedDate.dateObject;
-          }
-
-          // Create new row for regular tasks
-          const newRowData = [
-            dateForSubmission.formatted,
-            item["col1"] || "",
-            statusData[id] || "",
-            formattedNextTargetDate,
-            remarksData[id] || "",
-            imageUrl,
-            "", // Column G
-            username, // Column H - Store the logged-in username
-            item["col5"] || "", // Column I - Task description from col5
-            item["col3"] || "", // Column J - Given By from original task
-          ];
-
-          const insertFormData = new FormData();
-          insertFormData.append("sheetName", CONFIG.TARGET_SHEET_NAME);
-          insertFormData.append("action", "insert");
-          insertFormData.append("rowData", JSON.stringify(newRowData));
-
-          // Add date formatting hints
-          insertFormData.append("dateFormat", "DD/MM/YYYY");
-          insertFormData.append("timestampColumn", "0");
-          insertFormData.append("nextTargetDateColumn", "3");
-
-          const dateMetadata = {
-            columns: {
-              0: { type: "date", format: "DD/MM/YYYY" },
-              3: { type: "date", format: "DD/MM/YYYY" },
-            },
-          };
-          insertFormData.append("dateMetadata", JSON.stringify(dateMetadata));
-
-          if (nextTargetDateForGoogleSheets) {
-            insertFormData.append(
-              "nextTargetDateObject",
-              nextTargetDateForGoogleSheets.toISOString()
-            );
-          }
-
-          return fetch(CONFIG.APPS_SCRIPT_URL, {
-            method: "POST",
-            body: insertFormData,
-          });
-        })
-      );
     }
   };
 
