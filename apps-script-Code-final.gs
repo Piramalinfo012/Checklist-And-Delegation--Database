@@ -316,6 +316,18 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
+    if (params.action === 'setupNightlyTrigger' || params.action === 'setupDailyTrigger') {
+      var triggerRes = setupDailyTrigger();
+      return ContentService.createTextOutput(JSON.stringify(triggerRes))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (params.action === 'runNightlyTriggerNow') {
+      var runRes = dailyNightlyTaskGenerator();
+      return ContentService.createTextOutput(JSON.stringify(runRes))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     var sheetName = params.sheetName;
     var action = params.action || 'insert';
     if (action === 'add') action = 'insert';
@@ -787,37 +799,287 @@ function parseDate(dateString) {
   }
 }
 
-function isSameDate(date1, date2) {
-  return date1.getDate() === date2.getDate() &&
-    date1.getMonth() === date2.getMonth() &&
-    date1.getFullYear() === date2.getFullYear();
-}
+// ---------------------------------------------------------------------------
+// NIGHTLY AUTOMATED TASK GENERATION (EVERY NIGHT AT 2:00 AM IST)
+// ---------------------------------------------------------------------------
+
+var SUPABASE_URL = "https://fhbkzqgulnlyxubsnegl.supabase.co";
+var SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZoYmt6cWd1bG5seXh1YnNuZWdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkxMjE1NzYsImV4cCI6MjEwNDY5NzU3Nn0.UqZmR7fD1lNCEVClx4BUQr9MZgO4-JNv0aqrB5dpIeI";
 
 function setupDailyTrigger() {
   try {
     var triggers = ScriptApp.getProjectTriggers();
     for (var i = 0; i < triggers.length; i++) {
-      if (triggers[i].getHandlerFunction() === 'dailyChecklistProcessor') {
+      var func = triggers[i].getHandlerFunction();
+      if (func === 'dailyChecklistProcessor' || func === 'dailyNightlyTaskGenerator') {
         ScriptApp.deleteTrigger(triggers[i]);
       }
     }
-    var trigger = ScriptApp.newTrigger('dailyChecklistProcessor')
-      .timeBased().everyDays(1).atHour(12).create();
+
+    // Schedule every day at 2:00 AM IST (Cloud Cron)
+    var trigger = ScriptApp.newTrigger('dailyNightlyTaskGenerator')
+      .timeBased()
+      .everyDays(1)
+      .atHour(2)
+      .nearMinute(0)
+      .create();
 
     return {
       success: true,
-      message: "Daily trigger set up successfully!",
-      triggerId: trigger.getUniqueId()
+      message: "Nightly 2:00 AM Task Generation Trigger set up successfully!",
+      triggerId: trigger.getUniqueId(),
+      scheduledHour: "2:00 AM IST"
     };
   } catch (error) {
     return { success: false, error: error.toString() };
   }
 }
 
-function dailyChecklistProcessor() {
+function dailyNightlyTaskGenerator() {
   try {
     return processChecklistAndGenerateTasks();
   } catch (error) {
+    console.error("Error in nightly task generator:", error);
     return { success: false, error: error.toString() };
   }
 }
+
+function dailyChecklistProcessor() {
+  return dailyNightlyTaskGenerator();
+}
+
+function processChecklistAndGenerateTasks() {
+  try {
+    var ss = getSpreadsheet();
+    var checklistSheet = ss.getSheetByName("Unique");
+    var workingCalendarSheet = ss.getSheetByName("Working Day Calendar");
+    var holidaySheet = ss.getSheetByName("Holiday List");
+
+    if (!checklistSheet) throw new Error("Unique sheet not found");
+
+    var checklistData = checklistSheet.getDataRange().getDisplayValues();
+    if (checklistData.length < 2) throw new Error("Checklist template sheet is empty");
+
+    var today = new Date();
+    // Indian Standard Time
+    var todayString = Utilities.formatDate(today, "Asia/Kolkata", "dd/MM/yyyy");
+    var todayTimestamp = Utilities.formatDate(today, "Asia/Kolkata", "dd/MM/yyyy, HH:mm:ss");
+
+    // 1. Check Working Calendar and Holidays
+    var isWorkingDay = true;
+    if (holidaySheet) {
+      var holidayData = holidaySheet.getDataRange().getDisplayValues();
+      for (var h = 1; h < holidayData.length; h++) {
+        if (holidayData[h][0] && holidayData[h][0].toString().trim() === todayString) {
+          isWorkingDay = false;
+          break;
+        }
+      }
+    }
+
+    if (isWorkingDay && workingCalendarSheet) {
+      var calData = workingCalendarSheet.getDataRange().getDisplayValues();
+      var foundInCal = false;
+      for (var c = 1; c < calData.length; c++) {
+        if (calData[c][0] && calData[c][0].toString().trim() === todayString) {
+          foundInCal = true;
+          break;
+        }
+      }
+      if (calData.length > 1 && !foundInCal) {
+        isWorkingDay = false;
+      }
+    }
+
+    if (!isWorkingDay) {
+      return {
+        success: true,
+        message: "Today (" + todayString + ") is marked as a Holiday / Non-working day. No tasks generated.",
+        tasksGenerated: 0,
+        isTodayWorkingDay: false,
+        todayDate: todayString
+      };
+    }
+
+    var tasksGenerated = 0;
+    var supabaseTasksToInsert = [];
+    var sheetRowsToInsert = [];
+    var templateUpdates = [];
+
+    // Header in Unique: [Timestamp, Task ID, Department, Given By, Name, Task Description, Start Date, Frequency, Enable Reminders, Require Attachment, ..., Last Date (Col 17)]
+    for (var i = 1; i < checklistData.length; i++) {
+      var row = checklistData[i];
+      var taskId = row[1] || "";
+      var department = row[2] || "";
+      var givenBy = row[3] || "";
+      var name = row[4] || "";
+      var taskDesc = row[5] || "";
+      var startDate = row[6] || "";
+      var frequency = (row[7] || "daily").toLowerCase().trim();
+      var enableReminders = row[8] || "Yes";
+      var requireAttachment = row[9] || "No";
+      var lastDateStr = row[16] || ""; // Column Q
+
+      if (!name || !taskDesc) continue;
+
+      var shouldGenerate = false;
+      if (!lastDateStr || lastDateStr.trim() === '') {
+        shouldGenerate = true;
+      } else {
+        var lastDate = parseDate(lastDateStr);
+        if (!lastDate) {
+          shouldGenerate = true;
+        } else {
+          switch (frequency) {
+            case 'daily':
+              if (!isSameDate(today, lastDate)) shouldGenerate = true;
+              break;
+            case 'weekly':
+              var daysDiff = Math.floor((today - lastDate) / (1000 * 60 * 60 * 24));
+              if (daysDiff >= 7) shouldGenerate = true;
+              break;
+            case 'monthly':
+              var nextMonthDate = new Date(lastDate.getFullYear(), lastDate.getMonth() + 1, lastDate.getDate());
+              if (isSameDate(today, nextMonthDate) || today >= nextMonthDate) shouldGenerate = true;
+              break;
+            case 'yearly':
+              if (today.getFullYear() !== lastDate.getFullYear()) shouldGenerate = true;
+              break;
+            default:
+              if (!isSameDate(today, lastDate)) shouldGenerate = true;
+              break;
+          }
+        }
+      }
+
+      if (shouldGenerate) {
+        tasksGenerated++;
+
+        // For Google Sheet
+        sheetRowsToInsert.push([
+          todayTimestamp,
+          taskId,
+          department,
+          givenBy,
+          name,
+          taskDesc,
+          todayString,
+          frequency,
+          enableReminders,
+          requireAttachment,
+          "", "", "", "", "", "", ""
+        ]);
+
+        // For Supabase
+        supabaseTasksToInsert.push({
+          "Timestamp": todayTimestamp,
+          "Department": department,
+          "Given By": givenBy,
+          "Name": name,
+          "Tast Descriptions": taskDesc,
+          "Task Start Date": todayString,
+          "Freq": frequency,
+          "Enable Reminders": enableReminders,
+          "Require Attachment": requireAttachment,
+          "Actual": "",
+          "Delay": "",
+          "Status": "",
+          "Remarks": "",
+          "Uploaded Image": "",
+          "Admin Done": "",
+          "Leave": ""
+        });
+
+        templateUpdates.push({
+          sheetRow: i + 1,
+          taskId: taskId,
+          newLastDate: todayString
+        });
+      }
+    }
+
+    // 2. Insert into Google Sheet Checklist
+    var departmentSheet = ss.getSheetByName("Checklist");
+    if (departmentSheet && sheetRowsToInsert.length > 0) {
+      var lastRow = departmentSheet.getLastRow();
+      departmentSheet.getRange(lastRow + 1, 1, sheetRowsToInsert.length, sheetRowsToInsert[0].length).setValues(sheetRowsToInsert);
+    }
+
+    // 3. Update Last Date in Google Sheet Unique
+    if (templateUpdates.length > 0) {
+      templateUpdates.forEach(function(u) {
+        checklistSheet.getRange(u.sheetRow, 17).setValue(u.newLastDate);
+      });
+    }
+
+    // 4. Insert into Supabase directly via REST API
+    if (supabaseTasksToInsert.length > 0) {
+      try {
+        var supabaseBatchSize = 100;
+        for (var b = 0; b < supabaseTasksToInsert.length; b += supabaseBatchSize) {
+          var chunk = supabaseTasksToInsert.slice(b, b + supabaseBatchSize);
+          UrlFetchApp.fetch(SUPABASE_URL + "/rest/v1/Checklist", {
+            method: "post",
+            headers: {
+              "apikey": SUPABASE_KEY,
+              "Authorization": "Bearer " + SUPABASE_KEY,
+              "Content-Type": "application/json",
+              "Prefer": "return=minimal"
+            },
+            payload: JSON.stringify(chunk),
+            muteHttpExceptions: true
+          });
+        }
+
+        // Update Last Date in Supabase Unique table
+        templateUpdates.forEach(function(u) {
+          if (u.taskId) {
+            UrlFetchApp.fetch(SUPABASE_URL + "/rest/v1/Unique?Task%20ID=eq." + encodeURIComponent(u.taskId), {
+              method: "patch",
+              headers: {
+                "apikey": SUPABASE_KEY,
+                "Authorization": "Bearer " + SUPABASE_KEY,
+                "Content-Type": "application/json"
+              },
+              payload: JSON.stringify({ "Last Date": u.newLastDate }),
+              muteHttpExceptions: true
+            });
+          }
+        });
+      } catch (sbErr) {
+        console.warn("Supabase direct REST push warning:", sbErr);
+      }
+    }
+
+    return {
+      success: true,
+      message: "Nightly task generation completed successfully!",
+      tasksGenerated: tasksGenerated,
+      todayDate: todayString,
+      isTodayWorkingDay: true
+    };
+
+  } catch (error) {
+    console.error("Error in processChecklistAndGenerateTasks:", error);
+    return { success: false, error: error.toString() };
+  }
+}
+
+function parseDate(dateString) {
+  try {
+    if (!dateString) return null;
+    if (dateString instanceof Date) return dateString;
+    var parts = dateString.split('/');
+    if (parts.length === 3) return new Date(parts[2], parts[1] - 1, parts[0]);
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function isSameDate(date1, date2) {
+  return date1.getDate() === date2.getDate() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getFullYear() === date2.getFullYear();
+}
+

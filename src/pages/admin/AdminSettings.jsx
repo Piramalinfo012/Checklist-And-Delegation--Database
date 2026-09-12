@@ -7,7 +7,7 @@ import {
   CheckCircle, ArrowRight, Activity, Terminal, AlertTriangle, Eye, Sparkles,
   Download, UploadCloud, FileSpreadsheet, Database, ArrowDownToLine, Check,
   FileText, ExternalLink, UserPlus, Users, Key, Lock, Phone, Mail,
-  UserCheck, UserX, Trash2, Edit3, Shield, Building2, User, X, Camera
+  UserCheck, UserX, Trash2, Edit3, Shield, Building2, User, X, Camera, Moon
 } from 'lucide-react';
 import AdminLayout from '../../components/layout/AdminLayout';
 import { supabase } from '../../lib/supabaseClient';
@@ -32,6 +32,11 @@ export default function AdminSettings() {
   const [calendarDates, setCalendarDates] = useState([]);
   const [holidays, setHolidays] = useState([]);
   
+  // Nightly Cloud Trigger State (2:00 AM Cron)
+  const [isSettingUpNightlyTrigger, setIsSettingUpNightlyTrigger] = useState(false);
+  const [nightlyTriggerStatus, setNightlyTriggerStatus] = useState('');
+  const [isRunningNightlyTest, setIsRunningNightlyTest] = useState(false);
+
   // Users State (Whatsapp table)
   const [users, setUsers] = useState([]);
   const [userSearchTerm, setUserSearchTerm] = useState('');
@@ -130,6 +135,50 @@ export default function AdminSettings() {
   const handleChangeInterval = (val) => {
     setAutoScheduleInterval(val);
     localStorage.setItem('auto_trigger_interval', String(val));
+  };
+
+  // Setup 2:00 AM Nightly Cloud Trigger on Google Apps Script
+  const handleSetupNightlyTrigger = async () => {
+    setIsSettingUpNightlyTrigger(true);
+    setNightlyTriggerStatus('');
+    try {
+      const formData = new FormData();
+      formData.append('action', 'setupNightlyTrigger');
+      const res = await fetch(APPS_SCRIPT_URL, { method: 'POST', body: formData });
+      const json = await res.json();
+      if (json.success) {
+        setNightlyTriggerStatus('✅ 2:00 AM Nightly Cloud Trigger is active!');
+        alert('🌙 SUCCESS: Automated Nightly 2:00 AM Task Generator Trigger is configured in Google Apps Script! Every night at 2:00 AM IST, upcoming tasks will generate automatically.');
+      } else {
+        throw new Error(json.error || 'Failed to setup trigger');
+      }
+    } catch (err) {
+      console.error('Trigger setup error:', err);
+      alert(`Trigger notice: ${err.message || err}`);
+    } finally {
+      setIsSettingUpNightlyTrigger(false);
+    }
+  };
+
+  // Test Run Nightly Cloud Trigger Now
+  const handleRunNightlyCloudTest = async () => {
+    setIsRunningNightlyTest(true);
+    try {
+      const formData = new FormData();
+      formData.append('action', 'runNightlyTriggerNow');
+      const res = await fetch(APPS_SCRIPT_URL, { method: 'POST', body: formData });
+      const json = await res.json();
+      if (json.success) {
+        alert(`🎉 Cloud Trigger executed! Result: ${json.message || 'Success'} (Generated ${json.tasksGenerated || 0} tasks)`);
+        loadData();
+      } else {
+        alert(`Cloud execution notice: ${json.error || json.message}`);
+      }
+    } catch (err) {
+      alert(`Cloud test error: ${err.message || err}`);
+    } finally {
+      setIsRunningNightlyTest(false);
+    }
   };
 
   // =========================================================================
@@ -1526,6 +1575,65 @@ export default function AdminSettings() {
           {/* Right 1 Col: Automation & Schedule Settings */}
           <div className="space-y-6">
             
+            {/* 🌙 Nightly 2:00 AM Cloud Cron Generator Card */}
+            <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-purple-950 text-white border border-indigo-500/30 rounded-3xl p-6 shadow-xl space-y-4 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
+              
+              <div className="flex items-center justify-between border-b border-indigo-800/60 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-indigo-600/80 text-white shadow-lg shadow-indigo-500/30">
+                    <Moon className="h-5 w-5 text-amber-300" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                      <span>Nightly 2:00 AM Task Generator</span>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-semibold border border-emerald-500/30">
+                        Active
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-indigo-300">Serverless Google Cloud Cron</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2 text-xs text-slate-300 leading-relaxed">
+                <p>
+                  <strong className="text-white">🕒 Schedule:</strong> Every night at <span className="text-amber-300 font-bold">02:00 AM IST</span>.
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  Google Apps Script automatically evaluates the <span className="text-indigo-300 font-semibold">Working Calendar</span> &amp; <span className="text-indigo-300 font-semibold">Unique Templates</span> and inserts the new day's tasks directly into Supabase &amp; Sheets without needing any browser open.
+                </p>
+              </div>
+
+              {nightlyTriggerStatus && (
+                <div className="p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0" />
+                  <span>{nightlyTriggerStatus}</span>
+                </div>
+              )}
+
+              <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleSetupNightlyTrigger}
+                  disabled={isSettingUpNightlyTrigger}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  <Zap className={`h-3.5 w-3.5 ${isSettingUpNightlyTrigger ? 'animate-spin' : ''}`} />
+                  <span>{isSettingUpNightlyTrigger ? 'Configuring Cloud...' : '🌙 Setup / Refresh 2 AM Trigger'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRunNightlyCloudTest}
+                  disabled={isRunningNightlyTest}
+                  className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold rounded-xl border border-white/10 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  <Play className={`h-3.5 w-3.5 fill-current ${isRunningNightlyTest ? 'animate-spin' : ''}`} />
+                  <span>{isRunningNightlyTest ? 'Testing...' : 'Test Cloud Run'}</span>
+                </button>
+              </div>
+            </div>
+
             {/* Automated Schedule Card */}
             <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-5">
               <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
