@@ -785,17 +785,19 @@ export default function AdminSettings() {
       <div className="min-h-screen p-4 md:p-8 space-y-8 bg-slate-50/50">
         
         {/* Header Banner */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 md:p-8 text-white shadow-2xl border border-slate-800">
+        <div className="relative overflow-hidden rounded-3xl bg-slate-900 border-2 border-slate-800 p-6 md:p-8 text-white shadow-2xl">
+          <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 opacity-95 pointer-events-none" />
+          
           <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-            <div className="space-y-2">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 text-xs font-semibold uppercase tracking-wider">
-                <Sparkles className="h-3.5 w-3.5" />
+            <div className="space-y-2.5">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-600/40 border border-indigo-400/50 text-indigo-100 text-xs font-black tracking-wider uppercase shadow-sm">
+                <Sparkles className="h-3.5 w-3.5 text-amber-300" />
                 Admin Settings & User ID Management
               </div>
-              <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">
+              <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white drop-shadow">
                 ⚙️ User Management, Task Generator & Sheet Dump
               </h1>
-              <p className="text-slate-300 text-sm md:text-base max-w-2xl">
+              <p className="text-slate-100 text-sm md:text-base max-w-2xl font-medium leading-relaxed">
                 Create & manage new User IDs in the Whatsapp table, configure automated recurring task generators, and manually dump live Supabase data to Google Sheets.
               </p>
             </div>
@@ -803,7 +805,7 @@ export default function AdminSettings() {
             <div className="flex flex-wrap items-center gap-3">
               <button
                 onClick={handleOpenCreateUserModal}
-                className="flex items-center gap-2.5 px-5 py-3 rounded-2xl font-bold text-white shadow-lg transition-all duration-300 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 hover:shadow-emerald-500/25 active:scale-95"
+                className="flex items-center gap-2 px-5 py-3 rounded-2xl font-extrabold text-white shadow-xl transition-all duration-300 bg-emerald-600 hover:bg-emerald-500 hover:shadow-emerald-600/30 active:scale-95 border border-emerald-400/40"
               >
                 <UserPlus className="h-5 w-5" />
                 <span>+ Create New User ID</span>
@@ -812,7 +814,7 @@ export default function AdminSettings() {
               <button
                 onClick={() => handleExecuteTrigger()}
                 disabled={isRunningTrigger || loading}
-                className="flex items-center gap-2.5 px-5 py-3 rounded-2xl font-bold text-white shadow-lg transition-all duration-300 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 hover:shadow-indigo-500/25 active:scale-95 disabled:opacity-50"
+                className="flex items-center gap-2 px-5 py-3 rounded-2xl font-extrabold text-white shadow-xl transition-all duration-300 bg-indigo-600 hover:bg-indigo-500 hover:shadow-indigo-600/30 active:scale-95 disabled:opacity-50 border border-indigo-400/40"
               >
                 <Zap className={`h-5 w-5 ${isRunningTrigger ? 'animate-bounce text-amber-300' : 'text-amber-300 fill-amber-300'}`} />
                 <span>{isRunningTrigger ? 'Generating Tasks...' : '⚡ Run Task Generator'}</span>
@@ -824,64 +826,64 @@ export default function AdminSettings() {
         {/* Overview Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {/* Card 1: Users Count */}
-          <div className="bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
+          <div className="bg-white border-2 border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-emerald-300 transition-all">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Active User IDs</span>
-              <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-700">Active User IDs</span>
+              <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-800 border border-emerald-300">
                 <Users className="h-5 w-5" />
               </div>
             </div>
             <div className="mt-3">
-              <div className="text-2xl font-black text-emerald-700">{users.length} Users</div>
-              <p className="text-xs text-slate-500 mt-0.5">Stored in Supabase 'Whatsapp' table</p>
+              <div className="text-3xl font-black text-slate-900">{users.length} <span className="text-sm font-bold text-slate-500">Users</span></div>
+              <p className="text-xs font-semibold text-slate-600 mt-1">Stored in Supabase 'Whatsapp' table</p>
             </div>
           </div>
 
           {/* Card 2: Checklist Count */}
-          <div className="bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
+          <div className="bg-white border-2 border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Checklist Table</span>
-              <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-600">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-700">Checklist Table</span>
+              <div className="p-2.5 rounded-xl bg-indigo-100 text-indigo-800 border border-indigo-300">
                 <ListChecks className="h-5 w-5" />
               </div>
             </div>
             <div className="mt-3">
-              <div className="text-2xl font-black text-slate-800">{checklistCount.toLocaleString()}</div>
-              <p className="text-xs text-slate-500 mt-0.5">Total Checklist rows in Supabase</p>
+              <div className="text-3xl font-black text-slate-900">{checklistCount.toLocaleString()} <span className="text-sm font-bold text-slate-500">Rows</span></div>
+              <p className="text-xs font-semibold text-slate-600 mt-1">Total Checklist rows in Supabase</p>
             </div>
           </div>
 
           {/* Card 3: Delegation Count */}
-          <div className="bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
+          <div className="bg-white border-2 border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-purple-300 transition-all">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Delegation Table</span>
-              <div className="p-2.5 rounded-xl bg-purple-50 text-purple-600">
+              <span className="text-xs font-black uppercase tracking-wider text-slate-700">Delegation Table</span>
+              <div className="p-2.5 rounded-xl bg-purple-100 text-purple-800 border border-purple-300">
                 <Layers className="h-5 w-5" />
               </div>
             </div>
             <div className="mt-3">
-              <div className="text-2xl font-black text-purple-700">{delegationCount.toLocaleString()}</div>
-              <p className="text-xs text-slate-500 mt-0.5">Total Delegation rows in Supabase</p>
+              <div className="text-3xl font-black text-slate-900">{delegationCount.toLocaleString()} <span className="text-sm font-bold text-slate-500">Rows</span></div>
+              <p className="text-xs font-semibold text-slate-600 mt-1">Total Delegation rows in Supabase</p>
             </div>
           </div>
 
           {/* Card 4: Working Day Calendar */}
-          <div className="bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
+          <div className="bg-white border-2 border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-teal-300 transition-all">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Working Calendar</span>
-              <div className={`p-2.5 rounded-xl ${isWorkingDayToday ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+              <span className="text-xs font-black uppercase tracking-wider text-slate-700">Working Calendar</span>
+              <div className={`p-2.5 rounded-xl border ${isWorkingDayToday ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-rose-100 text-rose-800 border-rose-300'}`}>
                 <Calendar className="h-5 w-5" />
               </div>
             </div>
             <div className="mt-3">
               <div className="flex items-center gap-2">
-                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                  isWorkingDayToday ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black border ${
+                  isWorkingDayToday ? 'bg-emerald-100 text-emerald-900 border-emerald-300' : 'bg-rose-100 text-rose-900 border-rose-300'
                 }`}>
                   {isWorkingDayToday ? '🟢 Working Day' : isTodayHoliday ? `🔴 Holiday (${isTodayHoliday.Holiday})` : '🟡 Off Day'}
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-1">Today: {todayFormatted}</p>
+              <p className="text-xs font-semibold text-slate-600 mt-1.5">Today: <span className="text-slate-900 font-bold">{todayFormatted}</span></p>
             </div>
           </div>
         </div>
@@ -889,20 +891,20 @@ export default function AdminSettings() {
         {/* ========================================================================= */}
         {/* NEW DEDICATED SECTION 1: USER ID MANAGEMENT & CREATION (WHATSAPP TABLE)   */}
         {/* ========================================================================= */}
-        <div className="bg-white/90 backdrop-blur-xl border-2 border-emerald-200/80 rounded-3xl p-6 md:p-8 shadow-md space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+        <div className="bg-white border-2 border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b-2 border-slate-100 pb-5">
             <div className="flex items-center gap-3.5">
-              <div className="p-3 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-lg shadow-emerald-500/20">
+              <div className="p-3 rounded-2xl bg-emerald-600 text-white shadow-lg shadow-emerald-600/30">
                 <Users className="h-6 w-6" />
               </div>
               <div>
-                <h2 className="text-xl font-extrabold text-slate-800 flex items-center gap-2">
+                <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
                   <span>👤 User ID Directory & Management</span>
-                  <span className="px-2.5 py-0.5 text-[11px] font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  <span className="px-2.5 py-0.5 text-[11px] font-black rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300">
                     Whatsapp Table ({users.length} Users)
                   </span>
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs font-semibold text-slate-600 mt-1">
                   Naye user IDs create karein, passwords reset karein aur roles (Admin / User) manage karein.
                 </p>
               </div>
@@ -912,16 +914,16 @@ export default function AdminSettings() {
             <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
               <button
                 onClick={() => handleDownloadCSV('Whatsapp')}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 transition-colors"
                 title="Download all users to CSV"
               >
-                <Download className="h-3.5 w-3.5 text-slate-600" />
+                <Download className="h-3.5 w-3.5 text-slate-700" />
                 <span>Export Users CSV</span>
               </button>
 
               <button
                 onClick={handleOpenCreateUserModal}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition-all active:scale-95"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-500 shadow-md shadow-emerald-600/30 transition-all active:scale-95 border border-emerald-400/40"
               >
                 <UserPlus className="h-4 w-4" />
                 <span>+ Create New User ID</span>
@@ -933,20 +935,20 @@ export default function AdminSettings() {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-3 w-full md:w-auto flex-1">
               <div className="relative flex-1 md:w-72">
-                <Search className="h-3.5 w-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search className="h-3.5 w-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
                   type="text"
                   placeholder="Search user name, phone, dept..."
                   value={userSearchTerm}
                   onChange={(e) => setUserSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  className="w-full pl-9 pr-3 py-2 text-xs font-bold text-slate-900 bg-slate-50 border-2 border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 focus:bg-white"
                 />
               </div>
 
               <select
                 value={userRoleFilter}
                 onChange={(e) => setUserRoleFilter(e.target.value)}
-                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                className="px-3 py-2 bg-slate-50 border-2 border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
               >
                 <option value="ALL">All Roles</option>
                 <option value="ADMIN">🛡️ Admin Only</option>
@@ -955,15 +957,15 @@ export default function AdminSettings() {
               </select>
             </div>
 
-            <span className="text-xs font-medium text-slate-500">
+            <span className="text-xs font-bold text-slate-600">
               Showing {filteredUsers.length} of {users.length} users
             </span>
           </div>
 
           {/* Users Table */}
-          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm max-h-96 overflow-y-auto">
-            <table className="w-full text-left text-xs text-slate-600">
-              <thead className="bg-slate-50/90 backdrop-blur sticky top-0 z-10 text-slate-700 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
+          <div className="overflow-x-auto rounded-2xl border-2 border-slate-200 bg-white shadow-sm max-h-96 overflow-y-auto">
+            <table className="w-full text-left text-xs text-slate-800">
+              <thead className="bg-slate-100 sticky top-0 z-10 text-slate-900 font-black uppercase tracking-wider text-[11px] border-b-2 border-slate-300">
                 <tr>
                   <th className="py-3 px-4">User</th>
                   <th className="py-3 px-4">WhatsApp Mobile Number</th>
@@ -1315,36 +1317,37 @@ export default function AdminSettings() {
         )}
 
         {/* ========================================================================= */}
+        {/* ========================================================================= */}
         {/* NEW DEDICATED SECTION 2: MANUAL DATA DUMP TO GOOGLE SHEET & BACKUP        */}
         {/* ========================================================================= */}
-        <div className="bg-white/90 backdrop-blur-xl border-2 border-indigo-200/80 rounded-3xl p-6 md:p-8 shadow-md space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+        <div className="bg-white border-2 border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b-2 border-slate-100 pb-5">
             <div className="flex items-center gap-3.5">
-              <div className="p-3 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-lg shadow-emerald-500/20">
+              <div className="p-3 rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-600/30">
                 <FileSpreadsheet className="h-6 w-6" />
               </div>
               <div>
-                <h2 className="text-xl font-extrabold text-slate-800 flex items-center gap-2">
+                <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
                   <span>📤 Manual Data Dump to Google Sheet</span>
-                  <span className="px-2.5 py-0.5 text-[11px] font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  <span className="px-2.5 py-0.5 text-[11px] font-black rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300">
                     Live Sheet Sync
                   </span>
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs font-semibold text-slate-600 mt-1">
                   Checklist, Delegation aur Whatsapp users ka live Supabase data ek click me Google Sheet par dump / sync karein.
                 </p>
               </div>
             </div>
 
             {/* Overwrite Toggle */}
-            <label className="flex items-center gap-2.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
+            <label className="flex items-center gap-2.5 px-3 py-1.5 bg-slate-50 border-2 border-slate-300 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
               <input
                 type="checkbox"
                 checked={clearBeforeDump}
                 onChange={(e) => setClearBeforeDump(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                className="h-4 w-4 rounded border-slate-400 text-indigo-600 focus:ring-indigo-500"
               />
-              <span className="text-xs font-semibold text-slate-700">Overwrite / Replace Sheet Content</span>
+              <span className="text-xs font-bold text-slate-800">Overwrite / Replace Sheet Content</span>
             </label>
           </div>
 
@@ -1352,18 +1355,18 @@ export default function AdminSettings() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             
             {/* 1. Checklist Dump Card */}
-            <div className="p-5 rounded-2xl bg-gradient-to-br from-indigo-50/80 to-blue-50/50 border border-indigo-100 space-y-4 flex flex-col justify-between">
+            <div className="p-5 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50/80 border-2 border-indigo-200 space-y-4 flex flex-col justify-between shadow-sm">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-indigo-950 flex items-center gap-2">
-                    <ListChecks className="h-4 w-4 text-indigo-600" />
+                  <span className="font-black text-sm text-indigo-950 flex items-center gap-2">
+                    <ListChecks className="h-4 w-4 text-indigo-700" />
                     Checklist Sheet Dump
                   </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-200/60 font-bold text-indigo-800">
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-indigo-200 text-indigo-950 font-black border border-indigo-300">
                     {checklistCount.toLocaleString()} Rows
                   </span>
                 </div>
-                <p className="text-xs text-slate-600 leading-relaxed">
+                <p className="text-xs font-semibold text-slate-700 leading-relaxed">
                   Supabase `Checklist` table ka saara data Google Sheet ke `Checklist` tab me dump karta hai.
                 </p>
               </div>
@@ -1372,34 +1375,34 @@ export default function AdminSettings() {
                 <button
                   onClick={() => handleDumpToSheet('checklist')}
                   disabled={isDumping}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition-all active:scale-95 disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-extrabold text-xs text-white bg-indigo-600 hover:bg-indigo-500 shadow-md shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-50 border border-indigo-400/40"
                 >
                   <UploadCloud className={`h-4 w-4 ${isDumping ? 'animate-bounce' : ''}`} />
                   <span>Dump Checklist to Google Sheet</span>
                 </button>
                 <button
                   onClick={() => handleDownloadCSV('Checklist')}
-                  className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl font-semibold text-[11px] text-indigo-700 bg-white border border-indigo-200 hover:bg-indigo-50 transition-colors"
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl font-bold text-[11px] text-indigo-900 bg-white border-2 border-indigo-200 hover:bg-indigo-50 transition-colors"
                 >
-                  <Download className="h-3.5 w-3.5" />
+                  <Download className="h-3.5 w-3.5 text-indigo-700" />
                   <span>Download Checklist CSV</span>
                 </button>
               </div>
             </div>
 
             {/* 2. Delegation Dump Card */}
-            <div className="p-5 rounded-2xl bg-gradient-to-br from-purple-50/80 to-pink-50/50 border border-purple-100 space-y-4 flex flex-col justify-between">
+            <div className="p-5 rounded-2xl bg-gradient-to-br from-purple-50 to-pink-50/80 border-2 border-purple-200 space-y-4 flex flex-col justify-between shadow-sm">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-purple-950 flex items-center gap-2">
-                    <Layers className="h-4 w-4 text-purple-600" />
+                  <span className="font-black text-sm text-purple-950 flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-purple-700" />
                     Delegation Sheet Dump
                   </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-200/60 font-bold text-purple-800">
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-purple-200 text-purple-950 font-black border border-purple-300">
                     {delegationCount.toLocaleString()} Rows
                   </span>
                 </div>
-                <p className="text-xs text-slate-600 leading-relaxed">
+                <p className="text-xs font-semibold text-slate-700 leading-relaxed">
                   Supabase `Delegation` aur `DELEGATION DONE` tables ka data Google Sheet me sync karta hai.
                 </p>
               </div>
@@ -1408,7 +1411,7 @@ export default function AdminSettings() {
                 <button
                   onClick={() => handleDumpToSheet('delegation')}
                   disabled={isDumping}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-purple-600 hover:bg-purple-700 shadow-md shadow-purple-600/20 transition-all active:scale-95 disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-extrabold text-xs text-white bg-purple-600 hover:bg-purple-500 shadow-md shadow-purple-600/30 transition-all active:scale-95 disabled:opacity-50 border border-purple-400/40"
                 >
                   <UploadCloud className={`h-4 w-4 ${isDumping ? 'animate-bounce' : ''}`} />
                   <span>Dump Delegation to Google Sheet</span>
@@ -1416,16 +1419,16 @@ export default function AdminSettings() {
                 <div className="grid grid-cols-2 gap-1.5">
                   <button
                     onClick={() => handleDownloadCSV('Delegation')}
-                    className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl font-semibold text-[10px] text-purple-700 bg-white border border-purple-200 hover:bg-purple-50"
+                    className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl font-bold text-[10px] text-purple-900 bg-white border-2 border-purple-200 hover:bg-purple-50"
                   >
-                    <Download className="h-3 w-3" />
+                    <Download className="h-3 w-3 text-purple-700" />
                     <span>Delegation CSV</span>
                   </button>
                   <button
                     onClick={() => handleDownloadCSV('DELEGATION DONE')}
-                    className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl font-semibold text-[10px] text-purple-700 bg-white border border-purple-200 hover:bg-purple-50"
+                    className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl font-bold text-[10px] text-purple-900 bg-white border-2 border-purple-200 hover:bg-purple-50"
                   >
-                    <Download className="h-3 w-3" />
+                    <Download className="h-3 w-3 text-purple-700" />
                     <span>Done CSV</span>
                   </button>
                 </div>
@@ -1433,18 +1436,18 @@ export default function AdminSettings() {
             </div>
 
             {/* 3. Full Combined Dump Card */}
-            <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-500 via-teal-600 to-cyan-600 text-white space-y-4 flex flex-col justify-between shadow-lg shadow-emerald-500/20">
+            <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-700 to-slate-900 text-white space-y-4 flex flex-col justify-between shadow-xl border-2 border-emerald-400">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-extrabold text-sm flex items-center gap-2">
+                  <span className="font-black text-sm flex items-center gap-2 text-white drop-shadow">
                     <Sparkles className="h-4 w-4 text-amber-300" />
                     Full Sync (All Sheets)
                   </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/20 font-bold">
-                    Checklist + Delegation + Users
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-500/40 border border-emerald-300/60 font-black text-white">
+                    All Tables
                   </span>
                 </div>
-                <p className="text-xs text-emerald-100 leading-relaxed">
+                <p className="text-xs text-emerald-100 font-medium leading-relaxed">
                   Ek sath Checklist + Delegation + Whatsapp Users ka poora data live Google Sheet par dump karein.
                 </p>
               </div>
@@ -1453,7 +1456,7 @@ export default function AdminSettings() {
                 <button
                   onClick={() => handleDumpToSheet('all')}
                   disabled={isDumping}
-                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-xs text-slate-900 bg-white hover:bg-emerald-50 shadow-md transition-all active:scale-95 disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-black text-xs text-slate-900 bg-white hover:bg-emerald-50 shadow-md transition-all active:scale-95 disabled:opacity-50"
                 >
                   <Zap className={`h-4 w-4 text-emerald-600 ${isDumping ? 'animate-spin' : ''}`} />
                   <span>{isDumping ? 'Dumping in Progress...' : '🚀 Dump All to Google Sheet'}</span>
@@ -1462,7 +1465,7 @@ export default function AdminSettings() {
                   href="https://docs.google.com/spreadsheets/d/1r3YHyjqv24gZXBI9IofAhodnlBuDTA3sgyzU_PNCaQg/edit"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full flex items-center justify-center gap-1 py-1.5 px-3 rounded-xl font-semibold text-[11px] text-white/90 hover:text-white bg-white/10 hover:bg-white/20 transition-colors"
+                  className="w-full flex items-center justify-center gap-1 py-1.5 px-3 rounded-xl font-bold text-[11px] text-white/90 hover:text-white bg-white/10 hover:bg-white/20 transition-colors border border-white/20"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
                   <span>Open Target Google Sheet</span>
@@ -1515,29 +1518,29 @@ export default function AdminSettings() {
           
           {/* Left 2 Cols: Interactive Trigger Console */}
           <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-6 md:p-7 shadow-sm space-y-6">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div className="bg-white border-2 border-slate-200 rounded-3xl p-6 md:p-7 shadow-sm space-y-6">
+              <div className="flex items-center justify-between border-b-2 border-slate-100 pb-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/20">
+                  <div className="p-2.5 rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/30">
                     <Sliders className="h-5 w-5" />
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-slate-800">Task Generation Trigger Console</h2>
-                    <p className="text-xs text-slate-500">Run or simulate task generation from Unique templates</p>
+                    <h2 className="text-lg font-black text-slate-900">Task Generation Trigger Console</h2>
+                    <p className="text-xs font-semibold text-slate-600">Run or simulate task generation from Unique templates</p>
                   </div>
                 </div>
                 <button
                   onClick={loadData}
                   disabled={loading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border-2 border-slate-200 text-xs font-extrabold text-slate-700 hover:bg-slate-100 transition-colors"
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-                  Sync Data
+                  <span>Sync Data</span>
                 </button>
               </div>
 
               {/* Live Cloud Cron Countdown & Timing Control Banner */}
-              <div className="rounded-2xl p-4 md:p-5 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/40 text-white shadow-xl space-y-4">
+              <div className="rounded-2xl p-4 md:p-5 bg-slate-950 border-2 border-slate-800 text-white shadow-xl space-y-4">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   
                   {/* Left: Schedule Details */}
@@ -1547,49 +1550,49 @@ export default function AdminSettings() {
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                       </span>
-                      <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                      <span className="text-xs font-black uppercase tracking-wider text-emerald-400">
                         Automated Cloud Trigger
                       </span>
-                      <span className="px-2 py-0.5 rounded-full bg-indigo-500/30 border border-indigo-400/30 text-[10px] font-semibold text-indigo-200">
+                      <span className="px-2.5 py-0.5 rounded-full bg-indigo-600/50 border border-indigo-400/50 text-[11px] font-black text-white">
                         {formatHourLabel(nightlyTriggerHour)}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-300">
-                      Next Auto-Run: <span className="text-white font-semibold">{countdown.nextDateStr}</span>
+                    <p className="text-xs font-medium text-slate-200">
+                      Next Auto-Run: <span className="text-white font-bold">{countdown.nextDateStr}</span>
                     </p>
                   </div>
 
                   {/* Right: Live Digital Countdown */}
-                  <div className="flex items-center gap-2 bg-black/40 border border-indigo-500/30 rounded-2xl px-4 py-2 self-start md:self-auto shadow-inner">
+                  <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-700 rounded-2xl px-4 py-2 self-start md:self-auto shadow-inner">
                     <Clock className="h-5 w-5 text-amber-400 animate-pulse shrink-0" />
                     <div className="flex items-baseline gap-1.5 font-mono">
                       <div className="text-center">
-                        <span className="text-lg md:text-xl font-black text-white bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700 shadow">
+                        <span className="text-lg md:text-xl font-black text-white bg-slate-800 px-2 py-0.5 rounded-lg border border-slate-700 shadow">
                           {countdown.hours}
                         </span>
-                        <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-sans mt-0.5">Hours</span>
+                        <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-sans mt-0.5 font-bold">Hours</span>
                       </div>
                       <span className="text-amber-400 font-bold text-lg">:</span>
                       <div className="text-center">
-                        <span className="text-lg md:text-xl font-black text-white bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700 shadow">
+                        <span className="text-lg md:text-xl font-black text-white bg-slate-800 px-2 py-0.5 rounded-lg border border-slate-700 shadow">
                           {countdown.minutes}
                         </span>
-                        <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-sans mt-0.5">Mins</span>
+                        <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-sans mt-0.5 font-bold">Mins</span>
                       </div>
                       <span className="text-amber-400 font-bold text-lg">:</span>
                       <div className="text-center">
-                        <span className="text-lg md:text-xl font-black text-amber-300 bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700 shadow">
+                        <span className="text-lg md:text-xl font-black text-amber-300 bg-slate-800 px-2 py-0.5 rounded-lg border border-slate-700 shadow">
                           {countdown.seconds}
                         </span>
-                        <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-sans mt-0.5">Secs</span>
+                        <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-sans mt-0.5 font-bold">Secs</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Change Trigger Timing Control Bar */}
-                <div className="pt-3 border-t border-indigo-800/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 text-xs text-indigo-200">
+                <div className="pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
                     <Sliders className="h-4 w-4 text-indigo-400" />
                     <span>Change Automatic Trigger Time:</span>
                   </div>
@@ -1597,7 +1600,7 @@ export default function AdminSettings() {
                     <select
                       value={selectedTimingHour}
                       onChange={(e) => setSelectedTimingHour(e.target.value)}
-                      className="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-medium text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto"
+                      className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto"
                     >
                       {TIMING_OPTIONS.map((opt) => (
                         <option key={opt.value} value={opt.value} className="bg-slate-900 text-white">
@@ -1609,7 +1612,7 @@ export default function AdminSettings() {
                       type="button"
                       onClick={() => handleSetupNightlyTrigger(selectedTimingHour)}
                       disabled={isSettingUpNightlyTrigger}
-                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-50 shrink-0 flex items-center gap-1.5"
+                      className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold rounded-xl shadow-md shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-50 shrink-0 flex items-center gap-1.5 border border-indigo-400/40"
                     >
                       <Zap className={`h-3 w-3 ${isSettingUpNightlyTrigger ? 'animate-spin' : ''}`} />
                       <span>{isSettingUpNightlyTrigger ? 'Updating...' : 'Set Timing'}</span>
@@ -1621,52 +1624,52 @@ export default function AdminSettings() {
               {/* Trigger Settings Controls */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                  <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1.5">
                     Target Execution Date
                   </label>
                   <input
                     type="date"
                     value={selectedDate}
                     onChange={(e) => setSelectedDate(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border-2 border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 focus:bg-white"
                   />
-                  <p className="text-[11px] text-slate-400 mt-1">Tasks will be dated for this day</p>
+                  <p className="text-[11px] font-semibold text-slate-500 mt-1">Tasks will be dated for this day</p>
                 </div>
 
                 <div className="flex flex-col justify-between">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                  <label className="block text-xs font-black uppercase tracking-wider text-slate-800 mb-1.5">
                     Calendar Policy
                   </label>
-                  <label className="flex items-center gap-3 p-2.5 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-100/70 transition-colors">
+                  <label className="flex items-center gap-3 p-2.5 bg-slate-50 border-2 border-slate-300 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
                     <input
                       type="checkbox"
                       checked={ignoreCalendarCheck}
                       onChange={(e) => setIgnoreCalendarCheck(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      className="h-4 w-4 rounded border-slate-400 text-indigo-600 focus:ring-indigo-500"
                     />
                     <div className="text-xs">
-                      <span className="font-semibold text-slate-700 block">Ignore Holiday / Calendar Check</span>
-                      <span className="text-slate-400 text-[10px]">Force run even if marked non-working day</span>
+                      <span className="font-extrabold text-slate-900 block">Ignore Holiday / Calendar Check</span>
+                      <span className="text-slate-600 text-[11px] font-medium">Force run even if marked non-working day</span>
                     </div>
                   </label>
                 </div>
               </div>
 
               {/* Action Trigger Box */}
-              <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-50/70 via-purple-50/70 to-pink-50/70 border border-indigo-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-100/90 via-purple-100/90 to-pink-100/90 border-2 border-indigo-200 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="text-xs space-y-1">
-                  <div className="font-bold text-slate-800 flex items-center gap-2">
-                    <Zap className="h-4 w-4 text-indigo-600" />
+                  <div className="font-black text-slate-900 flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-indigo-700" />
                     <span>Trigger Ready: {dueTemplatesCount} template(s) due to generate</span>
                   </div>
-                  <p className="text-slate-500 text-[11px]">
+                  <p className="text-slate-700 font-semibold text-[11px]">
                     Evaluates frequencies (Daily, Weekly, Monthly, Yearly) and automatically prevents duplicate generation.
                   </p>
                 </div>
                 <button
                   onClick={() => handleExecuteTrigger()}
                   disabled={isRunningTrigger || loading}
-                  className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-50"
+                  className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-black text-white bg-indigo-600 hover:bg-indigo-500 shadow-md shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-50 border border-indigo-400/40"
                 >
                   {isRunningTrigger ? (
                     <>
@@ -1908,14 +1911,14 @@ export default function AdminSettings() {
         {/* ========================================================================= */}
         {/* BOTTOM SECTION: RECURRING CHECKLIST TEMPLATES INSPECTOR                    */}
         {/* ========================================================================= */}
-        <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+        <div className="bg-white border-2 border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b-2 border-slate-100 pb-4">
             <div>
-              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <ListChecks className="h-5 w-5 text-indigo-600" />
+              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                <ListChecks className="h-5 w-5 text-indigo-700" />
                 <span>Recurring Checklist Templates Inspector</span>
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs font-semibold text-slate-600 mt-0.5">
                 Inspect all recurring task definitions from 'Unique' table and their current generation status
               </p>
             </div>
@@ -1923,20 +1926,20 @@ export default function AdminSettings() {
             {/* Filters */}
             <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
               <div className="relative flex-1 sm:w-60">
-                <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                 <input
                   type="text"
                   placeholder="Search template / assignee..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs font-bold text-slate-900 bg-slate-50 border-2 border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 focus:bg-white"
                 />
               </div>
 
               <select
                 value={freqFilter}
                 onChange={(e) => setFreqFilter(e.target.value)}
-                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-600 focus:outline-none"
+                className="px-3 py-1.5 bg-slate-50 border-2 border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
               >
                 <option value="ALL">All Frequencies</option>
                 <option value="DAILY">Daily</option>
@@ -1948,7 +1951,7 @@ export default function AdminSettings() {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-600 focus:outline-none"
+                className="px-3 py-1.5 bg-slate-50 border-2 border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
               >
                 <option value="ALL">All Statuses</option>
                 <option value="DUE">⚡ Due Today</option>
@@ -1958,9 +1961,9 @@ export default function AdminSettings() {
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto rounded-2xl border border-slate-200">
-            <table className="w-full text-left text-xs text-slate-600">
-              <thead className="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
+          <div className="overflow-x-auto rounded-2xl border-2 border-slate-200">
+            <table className="w-full text-left text-xs text-slate-800">
+              <thead className="bg-slate-100 text-slate-900 font-black uppercase tracking-wider text-[11px] border-b-2 border-slate-300">
                 <tr>
                   <th className="py-3 px-4">Task ID</th>
                   <th className="py-3 px-4">Department</th>
