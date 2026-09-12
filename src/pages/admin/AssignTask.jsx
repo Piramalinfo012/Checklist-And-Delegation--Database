@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { BellRing, FileCheck, Calendar, Clock, Mic, MicOff, X } from "lucide-react";
-import AdminLayout from "../../components/layout/AdminLayout"
+import AdminLayout from "../../components/layout/AdminLayout";
 import { supabase } from "../../lib/supabaseClient";
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
+import { getNextTaskId, formatDateToDDMMYYYY } from "../../utils/taskTriggerEngine";
 
 const TaskTypePopup = ({ isOpen, onClose, onSelect }) => {
   if (!isOpen) return null;
@@ -1074,17 +1075,8 @@ export default function AssignTask() {
       const currentTimestamp = now.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
 
       if (formData.taskType === "delegation") {
-        // Insert into Delegation table
-        const { data: delLast } = await supabase
-          .from('Delegation')
-          .select('Task ID')
-          .order('Task ID', { ascending: false })
-          .limit(1);
-
-        let nextId = 1;
-        if (delLast && delLast.length > 0 && delLast[0]['Task ID']) {
-          nextId = (parseInt(delLast[0]['Task ID'], 10) || 0) + 1;
-        }
+        // Insert into Delegation table with guaranteed unique Task IDs
+        const nextId = await getNextTaskId('Delegation');
 
         const tasksToInsert = generatedTasks.map((t, idx) => ({
           'Task ID': nextId + idx,
@@ -1104,18 +1096,8 @@ export default function AssignTask() {
         if (insErr) throw insErr;
 
       } else {
-        // Checklist task: Insert into Unique recurring template table
-        const { data: uLast } = await supabase
-          .from('Unique')
-          .select('Task ID')
-          .order('Task ID', { ascending: false })
-          .limit(1);
-
-        let nextId = 1;
-        if (uLast && uLast.length > 0 && uLast[0]['Task ID']) {
-          nextId = (parseInt(uLast[0]['Task ID'], 10) || 0) + 1;
-        }
-
+        // Checklist task: Insert into Unique recurring template table with guaranteed unique Task ID
+        const nextId = await getNextTaskId('Unique');
         const dateStr = formatDateToDDMMYYYY(date || now);
 
         const templateRow = {
@@ -1138,16 +1120,7 @@ export default function AssignTask() {
         // Also if start date is today, generate immediate task instance in Checklist table
         const todayStr = formatDateToDDMMYYYY(now);
         if (dateStr === todayStr) {
-          const { data: cLast } = await supabase
-            .from('Checklist')
-            .select('Task ID')
-            .order('Task ID', { ascending: false })
-            .limit(1);
-
-          let nextCId = 1;
-          if (cLast && cLast.length > 0 && cLast[0]['Task ID']) {
-            nextCId = (parseInt(cLast[0]['Task ID'], 10) || 0) + 1;
-          }
+          const nextCId = await getNextTaskId('Checklist');
 
           await supabase.from('Checklist').insert([{
             'Task ID': nextCId,

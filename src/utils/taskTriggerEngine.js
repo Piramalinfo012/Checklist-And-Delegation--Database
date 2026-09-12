@@ -47,6 +47,48 @@ export function formatDateToDDMMYYYY(date) {
 }
 
 /**
+ * Reliably computes the next numeric Task ID for any Supabase table (Unique, Checklist, Delegation)
+ */
+export async function getNextTaskId(tableName) {
+  try {
+    // 1. Try ordering by quoted column '"Task ID"'
+    const { data: orderedData, error: orderErr } = await supabase
+      .from(tableName)
+      .select('"Task ID"')
+      .order('"Task ID"', { ascending: false })
+      .limit(10);
+
+    if (!orderErr && orderedData && orderedData.length > 0) {
+      const maxId = orderedData.reduce((max, r) => {
+        const raw = r['Task ID'] ?? r.id ?? 0;
+        const num = parseInt(String(raw).replace(/\D/g, ''), 10);
+        return !isNaN(num) && num > max ? num : max;
+      }, 0);
+      if (maxId > 0) return maxId + 1;
+    }
+
+    // 2. Fallback to scanning all Task IDs
+    const { data: allRows } = await supabase
+      .from(tableName)
+      .select('"Task ID"');
+
+    if (allRows && allRows.length > 0) {
+      const maxId = allRows.reduce((max, r) => {
+        const raw = r['Task ID'] ?? r.id ?? 0;
+        const num = parseInt(String(raw).replace(/\D/g, ''), 10);
+        return !isNaN(num) && num > max ? num : max;
+      }, 0);
+      if (maxId > 0) return maxId + 1;
+    }
+
+    return 1;
+  } catch (err) {
+    console.error(`Error calculating next Task ID for ${tableName}:`, err);
+    return Math.floor(Date.now() / 1000);
+  }
+}
+
+/**
  * Checks if two dates have the same Day, Month, and Year
  */
 export function isSameDay(d1, d2) {
@@ -217,23 +259,7 @@ export async function runTaskGenerationTrigger(options = {}) {
     addLog(`Found ${templates.length} templates. Checking eligibility for ${todayDDMMYYYY}...`);
 
     // 3. Determine highest existing Task ID in Checklist table
-    const { data: checklistData, error: checklistErr } = await supabase
-      .from('Checklist')
-      .select('Task ID')
-      .order('Task ID', { ascending: false })
-      .limit(1);
-
-    let nextTaskId = 1;
-    if (checklistData && checklistData.length > 0 && checklistData[0]['Task ID']) {
-      const currentMax = parseInt(checklistData[0]['Task ID'], 10);
-      if (!isNaN(currentMax)) {
-        nextTaskId = currentMax + 1;
-      }
-    } else {
-      // Alternatively count all rows
-      const { count } = await supabase.from('Checklist').select('*', { count: 'exact', head: true });
-      nextTaskId = (count || 0) + 1;
-    }
+    let nextTaskId = await getNextTaskId('Checklist');
 
     const tasksToInsert = [];
     const templateUpdates = [];
