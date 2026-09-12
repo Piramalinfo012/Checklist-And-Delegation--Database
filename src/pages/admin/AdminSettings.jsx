@@ -141,6 +141,8 @@ export default function AdminSettings() {
   const [freqFilter, setFreqFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [taskIdSortOrder, setTaskIdSortOrder] = useState('ASC');
+  const [editingLastDateId, setEditingLastDateId] = useState(null);
+  const [updatingDateId, setUpdatingDateId] = useState(null);
 
   // Load all initial data from Supabase
   const loadData = async () => {
@@ -513,6 +515,50 @@ export default function AdminSettings() {
 
     const savedHistory = JSON.parse(localStorage.getItem('task_trigger_history') || '[]');
     setTriggerHistory(savedHistory);
+  };
+
+  // Helpers for Last Generated Date Inline Editing
+  const ddmmyyyyToIso = (dStr) => {
+    if (!dStr) return '';
+    const d = parseDateString(dStr);
+    if (!d) return '';
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const isoToDdmmyyyy = (isoStr) => {
+    if (!isoStr) return '';
+    const [y, m, d] = isoStr.split('-');
+    if (!y || !m || !d) return '';
+    return `${d}/${m}/${y}`;
+  };
+
+  const handleUpdateLastGeneratedDate = async (taskId, newIsoDate) => {
+    const formattedDate = newIsoDate ? isoToDdmmyyyy(newIsoDate) : null;
+    setUpdatingDateId(taskId);
+    try {
+      const { error } = await supabase
+        .from('Unique')
+        .update({ 'Last Date': formattedDate })
+        .eq('Task ID', taskId);
+
+      if (error) throw error;
+
+      // Update local templates state immediately
+      setTemplates(prev =>
+        prev.map(item =>
+          item['Task ID'] === taskId ? { ...item, 'Last Date': formattedDate } : item
+        )
+      );
+      setEditingLastDateId(null);
+    } catch (err) {
+      console.error('Failed to update Last Date:', err);
+      alert(`Failed to update Last Generated date: ${err.message || err}`);
+    } finally {
+      setUpdatingDateId(null);
+    }
   };
 
   // =========================================================================
@@ -1931,8 +1977,8 @@ export default function AdminSettings() {
         {/* ========================================================================= */}
         {/* BOTTOM SECTION: RECURRING CHECKLIST TEMPLATES INSPECTOR                    */}
         {/* ========================================================================= */}
-        <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+        <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-4 sm:p-5 md:p-6 shadow-sm space-y-5">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
             <div>
               <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <ListChecks className="h-5 w-5 text-indigo-600" />
@@ -1944,8 +1990,8 @@ export default function AdminSettings() {
             </div>
 
             {/* Filters & Sorting */}
-            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-              <div className="relative flex-1 sm:w-60">
+            <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
+              <div className="relative flex-1 sm:w-56">
                 <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
@@ -1960,17 +2006,17 @@ export default function AdminSettings() {
               <select
                 value={taskIdSortOrder}
                 onChange={(e) => setTaskIdSortOrder(e.target.value)}
-                className="px-3 py-1.5 bg-indigo-50/70 border border-indigo-200 rounded-xl text-xs font-bold text-indigo-700 focus:outline-none cursor-pointer"
+                className="px-2.5 py-1.5 bg-indigo-50/70 border border-indigo-200 rounded-xl text-xs font-bold text-indigo-700 focus:outline-none cursor-pointer"
                 title="Sort by Task ID"
               >
-                <option value="ASC">🔢 Task ID: 1 → 999 (Ascending)</option>
-                <option value="DESC">🔢 Task ID: 999 → 1 (Descending)</option>
+                <option value="ASC">🔢 ID: 1 → 999 (Ascending)</option>
+                <option value="DESC">🔢 ID: 999 → 1 (Descending)</option>
               </select>
 
               <select
                 value={freqFilter}
                 onChange={(e) => setFreqFilter(e.target.value)}
-                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+                className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
               >
                 <option value="ALL">All Frequencies</option>
                 <option value="DAILY">Daily</option>
@@ -1982,7 +2028,7 @@ export default function AdminSettings() {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+                className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
               >
                 <option value="ALL">All Statuses</option>
                 <option value="DUE">⚡ Due Today</option>
@@ -1994,29 +2040,29 @@ export default function AdminSettings() {
           {/* Table */}
           <div className="overflow-x-auto rounded-2xl border border-slate-200">
             <table className="w-full text-left text-xs text-slate-600">
-              <thead className="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
+              <thead className="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200 select-none">
                 <tr>
                   <th 
-                    className="py-3 px-4 cursor-pointer hover:bg-indigo-50/70 transition-colors select-none group"
+                    className="py-2.5 px-3 w-16 cursor-pointer hover:bg-indigo-50/70 transition-colors select-none group"
                     onClick={() => setTaskIdSortOrder(prev => prev === 'ASC' ? 'DESC' : 'ASC')}
                     title="Click to toggle Task ID sort order (Ascending / Descending)"
                   >
-                    <div className="flex items-center gap-1.5 text-indigo-700 font-extrabold">
-                      <span>TASK ID</span>
+                    <div className="flex items-center gap-1 text-indigo-700 font-extrabold whitespace-nowrap">
+                      <span>ID</span>
                       {taskIdSortOrder === 'ASC' ? (
-                        <ArrowUp className="h-3.5 w-3.5 text-indigo-600 group-hover:scale-110 transition-transform" />
+                        <ArrowUp className="h-3 w-3 text-indigo-600 group-hover:scale-110 transition-transform" />
                       ) : (
-                        <ArrowDown className="h-3.5 w-3.5 text-indigo-600 group-hover:scale-110 transition-transform" />
+                        <ArrowDown className="h-3 w-3 text-indigo-600 group-hover:scale-110 transition-transform" />
                       )}
                     </div>
                   </th>
-                  <th className="py-3 px-4">Department</th>
-                  <th className="py-3 px-4">Assignee</th>
-                  <th className="py-3 px-4">Task Description</th>
-                  <th className="py-3 px-4">Frequency</th>
-                  <th className="py-3 px-4">Last Generated</th>
-                  <th className="py-3 px-4">Status for Selected Date</th>
-                  <th className="py-3 px-4 text-right">Instant Trigger</th>
+                  <th className="py-2.5 px-2.5 w-24 whitespace-nowrap">Department</th>
+                  <th className="py-2.5 px-2.5 w-24 whitespace-nowrap">Assignee</th>
+                  <th className="py-2.5 px-2.5">Task Description</th>
+                  <th className="py-2.5 px-2 w-20 text-center whitespace-nowrap">Frequency</th>
+                  <th className="py-2.5 px-2.5 w-32 whitespace-nowrap">Last Generated</th>
+                  <th className="py-2.5 px-2 w-28 text-center whitespace-nowrap" title="Status for Selected Date">Status</th>
+                  <th className="py-2.5 px-3 w-20 text-center whitespace-nowrap" title="Instant Trigger">Trigger</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
@@ -2034,17 +2080,17 @@ export default function AdminSettings() {
 
                     return (
                       <tr key={t['Task ID']} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3 px-4 font-bold text-slate-800">#{t['Task ID']}</td>
-                        <td className="py-3 px-4">
-                          <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-semibold text-[11px]">
+                        <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">#{t['Task ID']}</td>
+                        <td className="py-2.5 px-2.5 whitespace-nowrap">
+                          <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-semibold text-[11px] inline-block max-w-[110px] truncate">
                             {t.Department || 'General'}
                           </span>
                         </td>
-                        <td className="py-3 px-4 font-semibold text-slate-800">{t.Name || '-'}</td>
-                        <td className="py-3 px-4 max-w-xs truncate" title={t['Task Description'] || t['Tast Descriptions']}>
+                        <td className="py-2.5 px-2.5 font-semibold text-slate-800 whitespace-nowrap">{t.Name || '-'}</td>
+                        <td className="py-2.5 px-2.5 max-w-[200px] xl:max-w-[280px] truncate text-slate-700" title={t['Task Description'] || t['Tast Descriptions']}>
                           {t['Task Description'] || t['Tast Descriptions'] || '-'}
                         </td>
-                        <td className="py-3 px-4">
+                        <td className="py-2.5 px-2 text-center whitespace-nowrap">
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                             freq === 'DAILY' ? 'bg-blue-100 text-blue-700' :
                             freq === 'WEEKLY' ? 'bg-purple-100 text-purple-700' :
@@ -2054,10 +2100,52 @@ export default function AdminSettings() {
                             {freq}
                           </span>
                         </td>
-                        <td className="py-3 px-4 font-mono text-slate-500">
-                          {t['Last Date'] || <span className="text-slate-400 italic">Never</span>}
+                        {/* Editable Last Generated Date */}
+                        <td className="py-2 px-2.5 font-mono text-slate-700 whitespace-nowrap">
+                          {editingLastDateId === t['Task ID'] ? (
+                            <div className="flex items-center gap-1 animate-in fade-in duration-150">
+                              <input
+                                type="date"
+                                defaultValue={ddmmyyyyToIso(t['Last Date'])}
+                                onChange={(e) => handleUpdateLastGeneratedDate(t['Task ID'], e.target.value)}
+                                disabled={updatingDateId === t['Task ID']}
+                                className="px-1.5 py-0.5 bg-white border border-indigo-400 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm cursor-pointer"
+                                autoFocus
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setEditingLastDateId(null)}
+                                className="p-1 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-200 transition-colors"
+                                title="Cancel"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                              {t['Last Date'] && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateLastGeneratedDate(t['Task ID'], '')}
+                                  className="text-[10px] font-bold text-red-500 hover:text-red-700 hover:underline px-1 py-0.5 rounded"
+                                  title="Clear date (Set to Never)"
+                                >
+                                  Clear
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setEditingLastDateId(t['Task ID'])}
+                              className="group/editdate inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg hover:bg-indigo-50 border border-transparent hover:border-indigo-200 transition-all text-left"
+                              title="Click to edit Last Generated Date"
+                            >
+                              <span className={t['Last Date'] ? "text-slate-800 font-bold" : "text-slate-400 italic font-medium"}>
+                                {t['Last Date'] || 'Never'}
+                              </span>
+                              <Edit3 className="h-3 w-3 text-slate-400 group-hover/editdate:text-indigo-600 transition-colors opacity-40 group-hover/editdate:opacity-100" />
+                            </button>
+                          )}
                         </td>
-                        <td className="py-3 px-4">
+                        <td className="py-2.5 px-2 text-center whitespace-nowrap">
                           {dueInfo.isDue ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px]">
                               <Zap className="h-3 w-3" /> Due Now
@@ -2068,11 +2156,11 @@ export default function AdminSettings() {
                             </span>
                           )}
                         </td>
-                        <td className="py-3 px-4 text-right">
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
                           <button
                             onClick={() => handleExecuteTrigger(t['Task ID'])}
                             disabled={isRunningTrigger}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-50"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-50 shadow-xs"
                             title="Generate a task right now for this template"
                           >
                             <Play className="h-3 w-3 fill-current" />
