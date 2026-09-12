@@ -22,6 +22,41 @@ import {
 
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyAy98t3XAyRP3pFE7XOoDiTDU3Yc9WOIFayRXELW2XnUAzl7yE9bnO94GvZV0wJkH_/exec";
 
+const TIMING_OPTIONS = [
+  { value: '0', label: '12:00 AM (Midnight)' },
+  { value: '1', label: '01:00 AM' },
+  { value: '2', label: '02:00 AM (Default / Recommended)' },
+  { value: '3', label: '03:00 AM' },
+  { value: '4', label: '04:00 AM' },
+  { value: '5', label: '05:00 AM' },
+  { value: '6', label: '06:00 AM' },
+  { value: '7', label: '07:00 AM' },
+  { value: '8', label: '08:00 AM' },
+  { value: '9', label: '09:00 AM' },
+  { value: '10', label: '10:00 AM' },
+  { value: '11', label: '11:00 AM' },
+  { value: '12', label: '12:00 PM (Noon)' },
+  { value: '13', label: '01:00 PM' },
+  { value: '14', label: '02:00 PM' },
+  { value: '15', label: '03:00 PM' },
+  { value: '16', label: '04:00 PM' },
+  { value: '17', label: '05:00 PM' },
+  { value: '18', label: '06:00 PM' },
+  { value: '19', label: '07:00 PM' },
+  { value: '20', label: '08:00 PM' },
+  { value: '21', label: '09:00 PM' },
+  { value: '22', label: '10:00 PM' },
+  { value: '23', label: '11:00 PM' }
+];
+
+export const formatHourLabel = (h) => {
+  const num = parseInt(h, 10);
+  if (isNaN(num)) return '02:00 AM IST';
+  const ampm = num >= 12 ? 'PM' : 'AM';
+  const display = num % 12 === 0 ? 12 : num % 12;
+  return `${String(display).padStart(2, '0')}:00 ${ampm} IST`;
+};
+
 export default function AdminSettings() {
   // Stats & Main State
   const [loading, setLoading] = useState(true);
@@ -32,7 +67,19 @@ export default function AdminSettings() {
   const [calendarDates, setCalendarDates] = useState([]);
   const [holidays, setHolidays] = useState([]);
   
-  // Nightly Cloud Trigger State (2:00 AM Cron)
+  // Nightly Cloud Trigger State & Timing Configuration
+  const [nightlyTriggerHour, setNightlyTriggerHour] = useState(() => {
+    return localStorage.getItem('nightly_trigger_hour') || '2';
+  });
+  const [selectedTimingHour, setSelectedTimingHour] = useState(() => {
+    return localStorage.getItem('nightly_trigger_hour') || '2';
+  });
+  const [countdown, setCountdown] = useState({
+    hours: '00',
+    minutes: '00',
+    seconds: '00',
+    nextDateStr: ''
+  });
   const [isSettingUpNightlyTrigger, setIsSettingUpNightlyTrigger] = useState(false);
   const [nightlyTriggerStatus, setNightlyTriggerStatus] = useState('');
   const [isRunningNightlyTest, setIsRunningNightlyTest] = useState(false);
@@ -126,6 +173,46 @@ export default function AdminSettings() {
     loadData();
   }, []);
 
+  // Live 1-second countdown clock for next scheduled trigger
+  useEffect(() => {
+    const calculateCountdown = () => {
+      const now = new Date();
+      const targetHour = parseInt(nightlyTriggerHour, 10) || 2;
+      
+      const target = new Date();
+      target.setHours(targetHour, 0, 0, 0);
+
+      // If target time has already passed today, target is tomorrow
+      if (now >= target) {
+        target.setDate(target.getDate() + 1);
+      }
+
+      const diffMs = target.getTime() - now.getTime();
+      const totalSec = Math.max(0, Math.floor(diffMs / 1000));
+
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+
+      const formattedDate = target.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      });
+
+      setCountdown({
+        hours: String(h).padStart(2, '0'),
+        minutes: String(m).padStart(2, '0'),
+        seconds: String(s).padStart(2, '0'),
+        nextDateStr: `${formattedDate} @ ${formatHourLabel(targetHour)}`
+      });
+    };
+
+    calculateCountdown();
+    const timer = setInterval(calculateCountdown, 1000);
+    return () => clearInterval(timer);
+  }, [nightlyTriggerHour]);
+
   // Save preferences
   const handleToggleAutoLogin = (val) => {
     setAutoTriggerOnLogin(val);
@@ -137,18 +224,23 @@ export default function AdminSettings() {
     localStorage.setItem('auto_trigger_interval', String(val));
   };
 
-  // Setup 2:00 AM Nightly Cloud Trigger on Google Apps Script
-  const handleSetupNightlyTrigger = async () => {
+  // Setup / Update Scheduled Cloud Trigger on Google Apps Script
+  const handleSetupNightlyTrigger = async (customHour) => {
+    const hourToSet = customHour !== undefined ? customHour : selectedTimingHour;
     setIsSettingUpNightlyTrigger(true);
     setNightlyTriggerStatus('');
     try {
       const formData = new FormData();
       formData.append('action', 'setupNightlyTrigger');
+      formData.append('hour', String(hourToSet));
       const res = await fetch(APPS_SCRIPT_URL, { method: 'POST', body: formData });
       const json = await res.json();
       if (json.success) {
-        setNightlyTriggerStatus('✅ 2:00 AM Nightly Cloud Trigger is active!');
-        alert('🌙 SUCCESS: Automated Nightly 2:00 AM Task Generator Trigger is configured in Google Apps Script! Every night at 2:00 AM IST, upcoming tasks will generate automatically.');
+        localStorage.setItem('nightly_trigger_hour', String(hourToSet));
+        setNightlyTriggerHour(String(hourToSet));
+        setSelectedTimingHour(String(hourToSet));
+        setNightlyTriggerStatus(`✅ Cloud Trigger active daily at ${formatHourLabel(hourToSet)}!`);
+        alert(`🌙 SUCCESS: Automated Task Generator Trigger is configured in Google Apps Script! Every day at ${formatHourLabel(hourToSet)}, upcoming tasks will generate automatically.`);
       } else {
         throw new Error(json.error || 'Failed to setup trigger');
       }
@@ -1444,6 +1536,88 @@ export default function AdminSettings() {
                 </button>
               </div>
 
+              {/* Live Cloud Cron Countdown & Timing Control Banner */}
+              <div className="rounded-2xl p-4 md:p-5 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/40 text-white shadow-xl space-y-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  
+                  {/* Left: Schedule Details */}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                      </span>
+                      <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                        Automated Cloud Trigger
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-500/30 border border-indigo-400/30 text-[10px] font-semibold text-indigo-200">
+                        {formatHourLabel(nightlyTriggerHour)}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-300">
+                      Next Auto-Run: <span className="text-white font-semibold">{countdown.nextDateStr}</span>
+                    </p>
+                  </div>
+
+                  {/* Right: Live Digital Countdown */}
+                  <div className="flex items-center gap-2 bg-black/40 border border-indigo-500/30 rounded-2xl px-4 py-2 self-start md:self-auto shadow-inner">
+                    <Clock className="h-5 w-5 text-amber-400 animate-pulse shrink-0" />
+                    <div className="flex items-baseline gap-1.5 font-mono">
+                      <div className="text-center">
+                        <span className="text-lg md:text-xl font-black text-white bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700 shadow">
+                          {countdown.hours}
+                        </span>
+                        <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-sans mt-0.5">Hours</span>
+                      </div>
+                      <span className="text-amber-400 font-bold text-lg">:</span>
+                      <div className="text-center">
+                        <span className="text-lg md:text-xl font-black text-white bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700 shadow">
+                          {countdown.minutes}
+                        </span>
+                        <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-sans mt-0.5">Mins</span>
+                      </div>
+                      <span className="text-amber-400 font-bold text-lg">:</span>
+                      <div className="text-center">
+                        <span className="text-lg md:text-xl font-black text-amber-300 bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700 shadow">
+                          {countdown.seconds}
+                        </span>
+                        <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-sans mt-0.5">Secs</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Change Trigger Timing Control Bar */}
+                <div className="pt-3 border-t border-indigo-800/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-xs text-indigo-200">
+                    <Sliders className="h-4 w-4 text-indigo-400" />
+                    <span>Change Automatic Trigger Time:</span>
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <select
+                      value={selectedTimingHour}
+                      onChange={(e) => setSelectedTimingHour(e.target.value)}
+                      className="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-medium text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto"
+                    >
+                      {TIMING_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value} className="bg-slate-900 text-white">
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => handleSetupNightlyTrigger(selectedTimingHour)}
+                      disabled={isSettingUpNightlyTrigger}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-50 shrink-0 flex items-center gap-1.5"
+                    >
+                      <Zap className={`h-3 w-3 ${isSettingUpNightlyTrigger ? 'animate-spin' : ''}`} />
+                      <span>{isSettingUpNightlyTrigger ? 'Updating...' : 'Set Timing'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               {/* Trigger Settings Controls */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -1575,7 +1749,7 @@ export default function AdminSettings() {
           {/* Right 1 Col: Automation & Schedule Settings */}
           <div className="space-y-6">
             
-            {/* 🌙 Nightly 2:00 AM Cloud Cron Generator Card */}
+            {/* 🌙 Nightly Cloud Cron Generator Card */}
             <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-purple-950 text-white border border-indigo-500/30 rounded-3xl p-6 shadow-xl space-y-4 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
               
@@ -1586,7 +1760,7 @@ export default function AdminSettings() {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
-                      <span>Nightly 2:00 AM Task Generator</span>
+                      <span>Cloud Task Generator</span>
                       <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-semibold border border-emerald-500/30">
                         Active
                       </span>
@@ -1596,9 +1770,20 @@ export default function AdminSettings() {
                 </div>
               </div>
 
+              {/* Countdown mini widget */}
+              <div className="p-3 bg-black/40 rounded-2xl border border-indigo-500/30 flex items-center justify-between">
+                <div className="text-xs">
+                  <span className="text-slate-400 block text-[10px] uppercase tracking-wider font-semibold">Time to Next Trigger</span>
+                  <span className="font-bold text-white text-xs">{formatHourLabel(nightlyTriggerHour)}</span>
+                </div>
+                <div className="font-mono text-sm font-black text-amber-300 bg-slate-800/90 px-3 py-1 rounded-xl border border-slate-700">
+                  {countdown.hours}h : {countdown.minutes}m : {countdown.seconds}s
+                </div>
+              </div>
+
               <div className="space-y-2 text-xs text-slate-300 leading-relaxed">
                 <p>
-                  <strong className="text-white">🕒 Schedule:</strong> Every night at <span className="text-amber-300 font-bold">02:00 AM IST</span>.
+                  <strong className="text-white">🕒 Schedule:</strong> Every day at <span className="text-amber-300 font-bold">{formatHourLabel(nightlyTriggerHour)}</span>.
                 </p>
                 <p className="text-[11px] text-slate-400">
                   Google Apps Script automatically evaluates the <span className="text-indigo-300 font-semibold">Working Calendar</span> &amp; <span className="text-indigo-300 font-semibold">Unique Templates</span> and inserts the new day's tasks directly into Supabase &amp; Sheets without needing any browser open.
@@ -1615,12 +1800,12 @@ export default function AdminSettings() {
               <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
                 <button
                   type="button"
-                  onClick={handleSetupNightlyTrigger}
+                  onClick={() => handleSetupNightlyTrigger(selectedTimingHour)}
                   disabled={isSettingUpNightlyTrigger}
                   className="flex-1 flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-50"
                 >
                   <Zap className={`h-3.5 w-3.5 ${isSettingUpNightlyTrigger ? 'animate-spin' : ''}`} />
-                  <span>{isSettingUpNightlyTrigger ? 'Configuring Cloud...' : '🌙 Setup / Refresh 2 AM Trigger'}</span>
+                  <span>{isSettingUpNightlyTrigger ? 'Configuring Cloud...' : '🌙 Refresh Cloud Trigger'}</span>
                 </button>
                 <button
                   type="button"

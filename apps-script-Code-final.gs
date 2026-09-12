@@ -317,7 +317,8 @@ function doPost(e) {
     }
 
     if (params.action === 'setupNightlyTrigger' || params.action === 'setupDailyTrigger') {
-      var triggerRes = setupDailyTrigger();
+      var hour = params.hour !== undefined ? parseInt(params.hour, 10) : 2;
+      var triggerRes = setupDailyTrigger(hour);
       return ContentService.createTextOutput(JSON.stringify(triggerRes))
         .setMimeType(ContentService.MimeType.JSON);
     }
@@ -806,8 +807,9 @@ function parseDate(dateString) {
 var SUPABASE_URL = "https://fhbkzqgulnlyxubsnegl.supabase.co";
 var SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZoYmt6cWd1bG5seXh1YnNuZWdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkxMjE1NzYsImV4cCI6MjEwNDY5NzU3Nn0.UqZmR7fD1lNCEVClx4BUQr9MZgO4-JNv0aqrB5dpIeI";
 
-function setupDailyTrigger() {
+function setupDailyTrigger(hour) {
   try {
+    var targetHour = (hour !== undefined && !isNaN(hour)) ? Math.max(0, Math.min(23, parseInt(hour, 10))) : 2;
     var triggers = ScriptApp.getProjectTriggers();
     for (var i = 0; i < triggers.length; i++) {
       var func = triggers[i].getHandlerFunction();
@@ -816,19 +818,24 @@ function setupDailyTrigger() {
       }
     }
 
-    // Schedule every day at 2:00 AM IST (Cloud Cron)
+    // Schedule every day at targetHour:00 IST (Cloud Cron)
     var trigger = ScriptApp.newTrigger('dailyNightlyTaskGenerator')
       .timeBased()
       .everyDays(1)
-      .atHour(2)
+      .atHour(targetHour)
       .nearMinute(0)
       .create();
 
+    var ampm = targetHour >= 12 ? 'PM' : 'AM';
+    var displayHour = targetHour % 12 === 0 ? 12 : targetHour % 12;
+    var timeStr = (displayHour < 10 ? '0' : '') + displayHour + ':00 ' + ampm + ' IST';
+
     return {
       success: true,
-      message: "Nightly 2:00 AM Task Generation Trigger set up successfully!",
+      message: "Daily Task Generation Trigger set up successfully for " + timeStr + "!",
       triggerId: trigger.getUniqueId(),
-      scheduledHour: "2:00 AM IST"
+      scheduledHour: timeStr,
+      targetHour: targetHour
     };
   } catch (error) {
     return { success: false, error: error.toString() };
