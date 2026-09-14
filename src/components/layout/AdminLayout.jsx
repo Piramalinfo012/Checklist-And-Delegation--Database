@@ -151,7 +151,7 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
       label: "Settings",
       icon: Settings,
       active: location.pathname === "/dashboard/settings",
-      showFor: ["admin", "user"] // Show for admin and user
+      showFor: ["admin"] // Only show for admin
     },
   ]
 

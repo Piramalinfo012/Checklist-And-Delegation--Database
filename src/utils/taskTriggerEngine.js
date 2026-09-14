@@ -1,33 +1,58 @@
 import { supabase } from '../lib/supabaseClient.js';
 
+// Concurrency mutex to prevent parallel overlapping task generation triggers
+let isTriggerExecuting = false;
+
 /**
- * Parses DD/MM/YYYY or YYYY-MM-DD strings into a Date object (midnight local)
+ * Parses DD/MM/YYYY, YYYY-MM-DD, DD-MM-YYYY, or YYYY/MM/DD strings into a Date object (midnight local)
  */
 export function parseDateString(dateStr) {
   if (!dateStr) return null;
   if (dateStr instanceof Date) return new Date(dateStr.getFullYear(), dateStr.getMonth(), dateStr.getDate());
   
   const str = String(dateStr).trim();
-  // Handle DD/MM/YYYY
+  
+  // Handle slashes: DD/MM/YYYY or YYYY/MM/DD
   if (str.includes('/')) {
     const parts = str.split('/');
     if (parts.length === 3) {
-      const d = parseInt(parts[0], 10);
-      const m = parseInt(parts[1], 10) - 1;
-      const y = parseInt(parts[2], 10);
-      return new Date(y, m, d);
+      if (parts[0].length === 4) {
+        // YYYY/MM/DD
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const d = parseInt(parts[2], 10);
+        return new Date(y, m, d);
+      } else {
+        // DD/MM/YYYY
+        const d = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const y = parseInt(parts[2], 10);
+        return new Date(y, m, d);
+      }
     }
   }
-  // Handle YYYY-MM-DD
+  
+  // Handle dashes: YYYY-MM-DD or DD-MM-YYYY (including ISO datetime)
   if (str.includes('-')) {
-    const parts = str.split('-');
+    const datePart = str.split('T')[0].trim();
+    const parts = datePart.split('-');
     if (parts.length === 3) {
-      const y = parseInt(parts[0], 10);
-      const m = parseInt(parts[1], 10) - 1;
-      const d = parseInt(parts[2], 10);
-      return new Date(y, m, d);
+      if (parts[0].length === 4) {
+        // YYYY-MM-DD
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const d = parseInt(parts[2], 10);
+        return new Date(y, m, d);
+      } else {
+        // DD-MM-YYYY
+        const d = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const y = parseInt(parts[2], 10);
+        return new Date(y, m, d);
+      }
     }
   }
+  
   const parsed = new Date(str);
   if (!isNaN(parsed.getTime())) {
     return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
@@ -36,13 +61,19 @@ export function parseDateString(dateStr) {
 }
 
 /**
- * Formats a Date object to DD/MM/YYYY
+ * Formats a Date object or date string to DD/MM/YYYY
  */
 export function formatDateToDDMMYYYY(date) {
   if (!date) return '';
-  const d = String(date.getDate()).padStart(2, '0');
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const y = date.getFullYear();
+  let dObj = date;
+  if (typeof date === 'string') {
+    const parsed = parseDateString(date);
+    if (parsed) dObj = parsed;
+    else return date;
+  }
+  const d = String(dObj.getDate()).padStart(2, '0');
+  const m = String(dObj.getMonth() + 1).padStart(2, '0');
+  const y = dObj.getFullYear();
   return `${d}/${m}/${y}`;
 }
 
@@ -170,7 +201,7 @@ export function isTemplateDue(template, targetDate = new Date()) {
 }
 
 /**
- * Main Task Generator Trigger function
+ * Main Task Generator Trigger function with duplicate prevention
  */
 export async function runTaskGenerationTrigger(options = {}) {
   const {
@@ -179,6 +210,20 @@ export async function runTaskGenerationTrigger(options = {}) {
     specificTemplateId = null,
     onProgress = () => {}
   } = options;
+
+  if (isTriggerExecuting) {
+    console.warn('Task generation trigger is already executing. Ignoring concurrent call.');
+    return {
+      success: true,
+      skipped: true,
+      reason: 'Task generation is already running',
+      tasksGenerated: 0,
+      generatedTasks: [],
+      logs: [{ time: new Date().toLocaleTimeString(), message: 'Trigger already running in background', type: 'info' }]
+    };
+  }
+
+  isTriggerExecuting = true;
 
   const targetDateObj = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
   const todayDDMMYYYY = formatDateToDDMMYYYY(targetDateObj);
@@ -258,7 +303,40 @@ export async function runTaskGenerationTrigger(options = {}) {
 
     addLog(`Found ${templates.length} templates. Checking eligibility for ${todayDDMMYYYY}...`);
 
-    // 3. Determine highest existing Task ID in Checklist table
+    // 3. Fetch existing Checklist tasks to check for duplicate prevention
+    const { data: existingChecklistRows, error: cErr } = await supabase
+      .from('Checklist')
+      .select('"Task ID", "Name", "Tast Descriptions", "Task Description", "Task Start Date"')
+      .order('Task ID', { ascending: false })
+      .limit(3000);
+
+    if (cErr) {
+      console.warn('Could not fetch existing Checklist rows for deduplication:', cErr);
+    }
+
+    const makeTaskKey = (name, desc, dateVal) => {
+      const normName = (name || '').toString().trim().toLowerCase();
+      const normDesc = (desc || '').toString().trim().toLowerCase();
+      const parsed = parseDateString(dateVal);
+      const normDate = parsed ? formatDateToDDMMYYYY(parsed) : (dateVal || '').toString().trim();
+      return `${normName}:::${normDesc}:::${normDate}`;
+    };
+
+    const existingTaskKeys = new Set();
+    if (existingChecklistRows && existingChecklistRows.length > 0) {
+      for (const row of existingChecklistRows) {
+        const d = row['Tast Descriptions'] || row['Task Description'] || '';
+        const n = row['Name'] || '';
+        const dt = row['Task Start Date'] || '';
+        if (n && d && dt) {
+          existingTaskKeys.add(makeTaskKey(n, d, dt));
+        }
+      }
+    }
+
+    const seenInThisRun = new Set();
+
+    // 4. Determine highest existing Task ID in Checklist table
     let nextTaskId = await getNextTaskId('Checklist');
 
     const tasksToInsert = [];
@@ -267,15 +345,29 @@ export async function runTaskGenerationTrigger(options = {}) {
 
     for (const template of templates) {
       const evalResult = isTemplateDue(template, targetDateObj);
+      const department = template.Department || '';
+      const name = template.Name || '';
+      const taskDesc = template['Task Description'] || template['Tast Descriptions'] || '';
+      const freq = template.Frequency || template.Freq || 'daily';
+      const givenBy = template['Give By'] || template['Given By'] || 'Admin';
+      const reminder = template['Enable Reminder'] || template['Enable Reminders'] || 'Yes';
+      const attachment = template['Require Attatchment'] || template['Require Attachment'] || 'No';
+
+      const taskKey = makeTaskKey(name, taskDesc, todayDDMMYYYY);
+
+      // Strict duplicate check: if task already exists in Checklist for today or was already generated in this run
+      if (existingTaskKeys.has(taskKey) || seenInThisRun.has(taskKey)) {
+        // Ensure template Last Date is synced to today in Unique table
+        templateUpdates.push({
+          id: template['Task ID'],
+          newLastDate: todayDDMMYYYY
+        });
+        continue;
+      }
+
       if (evalResult.isDue) {
+        seenInThisRun.add(taskKey);
         const taskId = nextTaskId++;
-        const department = template.Department || '';
-        const name = template.Name || '';
-        const taskDesc = template['Task Description'] || template['Tast Descriptions'] || '';
-        const freq = template.Frequency || template.Freq || 'daily';
-        const givenBy = template['Give By'] || template['Given By'] || 'Admin';
-        const reminder = template['Enable Reminder'] || template['Enable Reminders'] || 'Yes';
-        const attachment = template['Require Attatchment'] || template['Require Attachment'] || 'No';
 
         const newTask = {
           'Task ID': taskId,
@@ -314,7 +406,22 @@ export async function runTaskGenerationTrigger(options = {}) {
     }
 
     if (tasksToInsert.length === 0) {
-      addLog(`All templates are already up-to-date. 0 tasks generated.`, 'info');
+      addLog(`All templates are already up-to-date and generated for ${todayDDMMYYYY}. 0 tasks generated.`, 'info');
+      
+      // Update template Last Dates if any were out of sync
+      if (templateUpdates.length > 0) {
+        for (const update of templateUpdates) {
+          try {
+            await supabase
+              .from('Unique')
+              .update({ 'Last Date': update.newLastDate })
+              .eq('Task ID', update.id);
+          } catch (err) {
+            console.warn(`Could not sync template ${update.id}:`, err);
+          }
+        }
+      }
+
       return {
         success: true,
         tasksGenerated: 0,
@@ -326,7 +433,7 @@ export async function runTaskGenerationTrigger(options = {}) {
 
     addLog(`Generating ${tasksToInsert.length} new tasks in Checklist table...`);
 
-    // 4. Batch Insert into Checklist
+    // 5. Batch Insert into Checklist
     // Insert in batches of 50 to avoid payload limits
     const BATCH_SIZE = 50;
     for (let i = 0; i < tasksToInsert.length; i += BATCH_SIZE) {
@@ -337,12 +444,16 @@ export async function runTaskGenerationTrigger(options = {}) {
 
     addLog(`Updating 'Last Date' on ${templateUpdates.length} templates in Unique table...`);
 
-    // 5. Update templates Last Date in Unique
+    // 6. Update templates Last Date in Unique
     for (const update of templateUpdates) {
-      await supabase
-        .from('Unique')
-        .update({ 'Last Date': update.newLastDate })
-        .eq('Task ID', update.id);
+      try {
+        await supabase
+          .from('Unique')
+          .update({ 'Last Date': update.newLastDate })
+          .eq('Task ID', update.id);
+      } catch (err) {
+        console.warn(`Could not update Last Date for template ${update.id}:`, err);
+      }
     }
 
     // Save trigger log in localStorage for quick display in UI
@@ -379,5 +490,7 @@ export async function runTaskGenerationTrigger(options = {}) {
       generatedTasks: [],
       logs
     };
+  } finally {
+    isTriggerExecuting = false;
   }
 }

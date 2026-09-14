@@ -1105,6 +1105,9 @@ export default function AssignTask() {
         const nextId = await getNextTaskId('Unique');
         const dateStr = formatDateToDDMMYYYY(date || now);
 
+        const todayStr = formatDateToDDMMYYYY(now);
+        const isStartingToday = (dateStr === todayStr);
+
         const templateRow = {
           'Task ID': nextId,
           Timestamp: currentTimestamp,
@@ -1116,33 +1119,39 @@ export default function AssignTask() {
           Frequency: formData.frequency,
           'Enable Reminder': formData.enableReminders ? 'Yes' : 'No',
           'Require Attatchment': formData.requireAttachment ? 'Yes' : 'No',
-          'Last Date': null
+          'Last Date': isStartingToday ? todayStr : null
         };
 
         const { error: uErr } = await supabase.from('Unique').insert([templateRow]);
         if (uErr) throw uErr;
 
-        // Also if start date is today, generate immediate task instance in Checklist table
-        const todayStr = formatDateToDDMMYYYY(now);
-        if (dateStr === todayStr) {
-          const nextCId = await getNextTaskId('Checklist');
+        // Also if start date is today, generate immediate task instance in Checklist table if not already present
+        if (isStartingToday) {
+          const { data: existingCheck } = await supabase
+            .from('Checklist')
+            .select('"Task ID"')
+            .eq('Name', formData.doer)
+            .eq('Task Start Date', todayStr)
+            .ilike('Tast Descriptions', (formData.description || '').trim())
+            .limit(1);
 
-          await supabase.from('Checklist').insert([{
-            'Task ID': nextCId,
-            Timestamp: currentTimestamp,
-            Department: formData.department,
-            'Given By': formData.givenBy || 'Admin',
-            Name: formData.doer,
-            'Tast Descriptions': formData.description,
-            'Task Start Date': todayStr,
-            Freq: formData.frequency,
-            'Enable Reminders': formData.enableReminders ? 'Yes' : 'No',
-            'Require Attachment': formData.requireAttachment ? 'Yes' : 'No',
-            Status: null
-          }]);
+          if (!existingCheck || existingCheck.length === 0) {
+            const nextCId = await getNextTaskId('Checklist');
 
-          // Update Unique Last Date to today
-          await supabase.from('Unique').update({ 'Last Date': todayStr }).eq('Task ID', nextId);
+            await supabase.from('Checklist').insert([{
+              'Task ID': nextCId,
+              Timestamp: currentTimestamp,
+              Department: formData.department,
+              'Given By': formData.givenBy || 'Admin',
+              Name: formData.doer,
+              'Tast Descriptions': formData.description,
+              'Task Start Date': todayStr,
+              Freq: formData.frequency,
+              'Enable Reminders': formData.enableReminders ? 'Yes' : 'No',
+              'Require Attachment': formData.requireAttachment ? 'Yes' : 'No',
+              Status: null
+            }]);
+          }
         }
       }
 

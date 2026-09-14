@@ -113,7 +113,7 @@ function AppRoutes() {
       <Route
         path="/dashboard/settings"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={["admin"]}>
             <AdminSettings />
           </ProtectedRoute>
         }
