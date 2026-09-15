@@ -20,7 +20,7 @@ html, body {
 .overflow-auto,
 main {
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
+  overscroll-behavior: auto;
   scroll-behavior: smooth;
 }
 
