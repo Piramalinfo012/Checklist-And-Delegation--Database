@@ -1071,9 +1071,13 @@ function DelegationDataPage() {
     setIsSubmitting(true);
 
     try {
+      const username = sessionStorage.getItem("username") || "";
+      const now = new Date();
+      const currentTimestamp = now.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
+      const rowsToInsert = [];
       const delegationUpdates = [];
 
       for (const id of selectedItemsArray) {
@@ -1956,9 +1960,6 @@ function DelegationDataPage() {
                           Status
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Task Start Date
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Task ID
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -2049,11 +2050,6 @@ function DelegationDataPage() {
                                 >
                                   {account["col20"] || "—"}
                                 </span>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-gray-900">
-                                  {formatDateForDisplay(account["col0"]) || "—"}
-                                </div>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm text-gray-900">
