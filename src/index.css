@@ -8,24 +8,45 @@
     background: linear-gradient(to right, #7E22CE, #BE185D);
 }
 
-/* Improve scrolling performance for large tables */
-.h-\[calc\(100vh-250px\)\] {
-  transform: translateZ(0);
-  will-change: transform;
+/* Smooth hardware-accelerated scrolling optimizations */
+html, body {
+  scroll-behavior: smooth;
+  text-rendering: optimizeSpeed;
 }
 
-/* Ensure smooth scrolling */
-.h-\[calc\(100vh-250px\)\]::-webkit-scrollbar {
-  width: 8px;
+/* Optimize scroll containers and prevent compositing lag */
+.overflow-y-auto,
+.overflow-x-auto,
+.overflow-auto,
+main {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scroll-behavior: smooth;
 }
 
-.h-\[calc\(100vh-250px\)\]::-webkit-scrollbar-track {
-  background: #f1f1f1;
+/* Virtual rendering optimization for large data table rows */
+tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 52px;
 }
 
-.h-\[calc\(100vh-250px\)\]::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 4px;
+/* Modern smooth scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.5);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.8);
 }
 
  @media (max-width: 768px) {

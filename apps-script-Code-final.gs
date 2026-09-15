@@ -23,6 +23,26 @@ function doGet(e) {
   try {
     var params = e.parameter;
 
+    // Test Connection action
+    if (params.action === 'testConnection' || params.sheet === 'ping') {
+      var ssTest;
+      if (params.spreadsheetId && params.spreadsheetId.trim() !== '') {
+        ssTest = SpreadsheetApp.openById(params.spreadsheetId.trim());
+      } else if (params.spreadsheetUrl && params.spreadsheetUrl.trim() !== '') {
+        ssTest = SpreadsheetApp.openByUrl(params.spreadsheetUrl.trim());
+      } else {
+        ssTest = getSpreadsheet();
+      }
+      var sheetNames = ssTest.getSheets().map(function(s) { return s.getName(); });
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        message: "Connected to Google Sheet: " + ssTest.getName(),
+        spreadsheetName: ssTest.getName(),
+        spreadsheetId: ssTest.getId(),
+        sheets: sheetNames
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     // Handle username lookup request (Live Real-Time)
     if (params.username) {
       return fetchUserEmail(params.username);
@@ -33,8 +53,10 @@ function doGet(e) {
       return fetchSheetData(params.sheet, params);
     }
 
-    return ContentService.createTextOutput("Google Apps Script is running successfully.")
-      .setMimeType(ContentService.MimeType.TEXT);
+    return ContentService.createTextOutput(JSON.stringify({
+      success: true,
+      message: "Google Apps Script Web App is running successfully."
+    })).setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
     console.error("Error in doGet:", error);
     return ContentService.createTextOutput(JSON.stringify({
@@ -248,7 +270,36 @@ function doPost(e) {
   try {
     lock.waitLock(12000);
 
-    var params = e.parameter;
+    var params = (e && e.parameter) ? e.parameter : {};
+    if (e && e.postData && e.postData.contents) {
+      try {
+        var parsed = JSON.parse(e.postData.contents);
+        if (parsed && typeof parsed === 'object') {
+          for (var k in parsed) {
+            if (params[k] === undefined) params[k] = parsed[k];
+          }
+        }
+      } catch (jsonErr) {}
+    }
+
+    if (params.action === 'testConnection' || params.action === 'ping') {
+      var ssTest;
+      if (params.spreadsheetId && params.spreadsheetId.trim() !== '') {
+        ssTest = SpreadsheetApp.openById(params.spreadsheetId.trim());
+      } else if (params.spreadsheetUrl && params.spreadsheetUrl.trim() !== '') {
+        ssTest = SpreadsheetApp.openByUrl(params.spreadsheetUrl.trim());
+      } else {
+        ssTest = getSpreadsheet();
+      }
+      var sheetNames = ssTest.getSheets().map(function(s) { return s.getName(); });
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        message: "Successfully connected to Google Sheet: " + ssTest.getName(),
+        spreadsheetName: ssTest.getName(),
+        spreadsheetId: ssTest.getId(),
+        sheets: sheetNames
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
 
     if (params.action === 'uploadFile') {
       var base64Data = params.base64Data;
@@ -296,23 +347,64 @@ function doPost(e) {
       var dumpSheetName = params.sheetName;
       var clearExisting = params.clearExisting === 'true';
       var rowsToDump = JSON.parse(params.rowData);
-      var ss = getSpreadsheet();
+      var headers = params.headers ? JSON.parse(params.headers) : null;
+
+      var ss;
+      if (params.spreadsheetId && params.spreadsheetId.trim() !== '') {
+        ss = SpreadsheetApp.openById(params.spreadsheetId.trim());
+      } else if (params.spreadsheetUrl && params.spreadsheetUrl.trim() !== '') {
+        ss = SpreadsheetApp.openByUrl(params.spreadsheetUrl.trim());
+      } else {
+        ss = getSpreadsheet();
+      }
+
       var targetSheet = ss.getSheetByName(dumpSheetName);
       if (!targetSheet) {
         targetSheet = ss.insertSheet(dumpSheetName);
       }
-      if (clearExisting && targetSheet.getLastRow() > 1) {
-        targetSheet.getRange(2, 1, targetSheet.getLastRow() - 1, targetSheet.getLastColumn()).clearContent();
+
+      if (clearExisting) {
+        targetSheet.clear();
+        if (headers && Array.isArray(headers) && headers.length > 0) {
+          targetSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+          targetSheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#f3f4f6");
+        }
+      } else if (targetSheet.getLastRow() === 0) {
+        if (headers && Array.isArray(headers) && headers.length > 0) {
+          targetSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+          targetSheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#f3f4f6");
+        }
       }
+
       if (Array.isArray(rowsToDump) && rowsToDump.length > 0) {
+        var numCols = rowsToDump[0].length;
         var lastRow = targetSheet.getLastRow();
-        targetSheet.getRange(lastRow + 1, 1, rowsToDump.length, rowsToDump[0].length).setValues(rowsToDump);
+        var requiredRows = lastRow + rowsToDump.length;
+        var currentMaxRows = targetSheet.getMaxRows();
+        
+        // Auto-expand sheet rows if needed to avoid grid overflow
+        if (requiredRows > currentMaxRows) {
+          var rowsToAdd = (requiredRows - currentMaxRows) + 1000;
+          targetSheet.insertRowsAfter(currentMaxRows, rowsToAdd);
+        }
+
+        // Auto-expand sheet columns if needed
+        var currentMaxCols = targetSheet.getMaxColumns();
+        if (numCols > currentMaxCols) {
+          targetSheet.insertColumnsAfter(currentMaxCols, numCols - currentMaxCols);
+        }
+
+        targetSheet.getRange(lastRow + 1, 1, rowsToDump.length, numCols).setValues(rowsToDump);
+        SpreadsheetApp.flush();
       }
+
       return ContentService.createTextOutput(JSON.stringify({
         success: true,
         message: "Data dumped successfully",
         rowsDumped: rowsToDump.length,
-        sheetName: dumpSheetName
+        sheetName: dumpSheetName,
+        spreadsheetId: ss.getId(),
+        spreadsheetName: ss.getName()
       })).setMimeType(ContentService.MimeType.JSON);
     }
 

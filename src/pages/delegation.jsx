@@ -298,7 +298,6 @@ function DelegationDataPage() {
     },
     [parseDateFromDDMMYYYY]
   );
-
   const resetFilters = useCallback(() => {
     setSearchTerm("");
     setStartDate("");
@@ -502,8 +501,6 @@ function DelegationDataPage() {
     return Array.from(names).sort();
   }, [accountData, historyData, userRole, username]);
 
-
-
   const uniqueDates = useMemo(() => {
     const dates = new Set();
     accountData.forEach((item) => {
@@ -583,9 +580,59 @@ function DelegationDataPage() {
     userRole,
     username,
     nameFilter,
-  ]); // Added nameFilter dependency
-  // Optimized data fetching with parallel requests
-  // Optimized data fetching with parallel requests
+  ]);
+
+  const parseToDateObject = useCallback((val) => {
+    if (!val) return null;
+    if (val instanceof Date && !isNaN(val.getTime())) return val;
+    if (typeof val !== "string") return null;
+    val = val.trim();
+    if (!val) return null;
+
+    // DD/MM/YYYY or DD-MM-YYYY format (with optional time)
+    const dmyMatch = val.match(
+      /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})(?:[,\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?(?:\s*(am|pm))?)?/i
+    );
+    if (dmyMatch) {
+      const day = parseInt(dmyMatch[1], 10);
+      const month = parseInt(dmyMatch[2], 10) - 1;
+      const year = parseInt(dmyMatch[3], 10);
+      let hours = dmyMatch[4] ? parseInt(dmyMatch[4], 10) : 0;
+      const minutes = dmyMatch[5] ? parseInt(dmyMatch[5], 10) : 0;
+      const seconds = dmyMatch[6] ? parseInt(dmyMatch[6], 10) : 0;
+      const ampm = dmyMatch[7] ? dmyMatch[7].toLowerCase() : null;
+      if (ampm === "pm" && hours < 12) hours += 12;
+      if (ampm === "am" && hours === 12) hours = 0;
+      return new Date(year, month, day, hours, minutes, seconds);
+    }
+
+    // YYYY-MM-DD format
+    const ymdMatch = val.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/);
+    if (ymdMatch) {
+      const year = parseInt(ymdMatch[1], 10);
+      const month = parseInt(ymdMatch[2], 10) - 1;
+      const day = parseInt(ymdMatch[3], 10);
+      return new Date(year, month, day);
+    }
+
+    // Google Sheets Date(year,month,day)
+    if (val.startsWith("Date(")) {
+      const match = /Date\((\d+),(\d+),(\d+)\)/.exec(val);
+      if (match) {
+        return new Date(
+          parseInt(match[1], 10),
+          parseInt(match[2], 10),
+          parseInt(match[3], 10)
+        );
+      }
+    }
+
+    const parsed = new Date(val);
+    if (!isNaN(parsed.getTime())) return parsed;
+    return null;
+  }, []);
+
+  // Optimized data fetching with parallel requests and exact formula computation
   // isBackground=true is used by the 15s poll below: it refetches silently
   // (no spinner) and, on failure, keeps whatever data is already on screen
   // instead of blanking it out over a transient network hiccup.
@@ -598,21 +645,33 @@ function DelegationDataPage() {
 
       // Parallel fetch both tables from Supabase
       const [mainResponse, historyResponse] = await Promise.all([
-        supabase.from('Delegation').select('*').order('Task ID', { ascending: false }).limit(2500),
-        supabase.from('DELEGATION DONE').select('*').order('id', { ascending: false }).limit(2500)
+        supabase.from('Delegation').select('*').order('Task ID', { ascending: false }).limit(5000),
+        supabase.from('DELEGATION DONE').select('*').order('id', { ascending: true }).limit(5000)
       ]);
 
       if (mainResponse.error) throw mainResponse.error;
 
-      // Process history data if available
+      // Group DELEGATION DONE records by Task id
+      const doneByTaskId = new Map();
       let processedHistoryData = [];
+
       if (historyResponse.data) {
         processedHistoryData = historyResponse.data.map((row, rowIndex) => {
+          const rawTaskId = row['Task id'] ?? row['Task ID'] ?? row['taskId'] ?? '';
+          const taskIdStr = String(rawTaskId).trim();
+          if (taskIdStr) {
+            if (!doneByTaskId.has(taskIdStr)) {
+              doneByTaskId.set(taskIdStr, []);
+            }
+            doneByTaskId.get(taskIdStr).push(row);
+          }
+
           return {
-            _id: Math.random().toString(36).substring(2, 15),
-            _rowIndex: rowIndex + 2, // Supabase id or just index
+            _id: row['id'] ? `hist_${row['id']}` : `hist_row_${rowIndex}`,
+            _rowIndex: rowIndex + 2,
+            _dbId: row['id'],
             col0: row['Timestamp'] || "",
-            col1: row['Task id'] || "",
+            col1: rawTaskId || "",
             col2: row['Status'] || "",
             col3: row['Next extend date'] || "",
             col4: row['Reason'] || "",
@@ -629,17 +688,148 @@ function DelegationDataPage() {
       setHistoryData(processedHistoryData);
 
       const allDelegationData = [];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
       if (mainResponse.data) {
         mainResponse.data.forEach((row, rowIndex) => {
-          const taskId = row['Task ID'] || "";
-          const stableId = taskId ? `task_${taskId}_${rowIndex}` : `row_${rowIndex}_${Math.random().toString(36).substring(2, 15)}`;
+          const rawTaskId = row['Task ID'] ?? row['Task id'] ?? '';
+          const taskIdStr = String(rawTaskId).trim();
+          const stableId = taskIdStr ? `task_${taskIdStr}_${rowIndex}` : `row_${rowIndex}_${Math.random().toString(36).substring(2, 15)}`;
+
+          const taskDoneList = taskIdStr ? (doneByTaskId.get(taskIdStr) || []) : [];
+          const doneCount = taskDoneList.length;
+
+          // Color Code For (Col R / col17): COUNTIF('DELEGATION DONE'!B2:B, B2:B)
+          const col17_colorCodeFor = doneCount > 0 ? doneCount : (row['Color Code For'] || 1);
+
+          // Color Code (Col S / col18): 1 -> Green, 2 -> Yellow, >=3 -> Red
+          let col18_colorCode = "Green";
+          if (col17_colorCodeFor === 2) {
+            col18_colorCode = "Yellow";
+          } else if (col17_colorCodeFor >= 3) {
+            col18_colorCode = "Red";
+          }
+
+          // Latest record from DELEGATION DONE
+          const latestDoneRecord = taskDoneList.length > 0 ? taskDoneList[taskDoneList.length - 1] : null;
+
+          // Update Date (Col Q / col16): Latest "Next extend date"
+          let latestExtendDate = "";
+          for (let k = taskDoneList.length - 1; k >= 0; k--) {
+            if (taskDoneList[k]['Next extend date']) {
+              latestExtendDate = taskDoneList[k]['Next extend date'];
+              break;
+            }
+          }
+          const col16_updateDate = latestExtendDate || row['Update Date'] || "";
+
+          // Planned Date (Col K / col10): IF((G="")*(Q=""), "", IF(G>Q, G, Q))
+          const rawStartDate = row['Task Start Date'] || "";
+          let col10_plannedDate = "";
+          if (!rawStartDate && !col16_updateDate) {
+            col10_plannedDate = "";
+          } else if (rawStartDate && !col16_updateDate) {
+            col10_plannedDate = rawStartDate;
+          } else if (!rawStartDate && col16_updateDate) {
+            col10_plannedDate = col16_updateDate;
+          } else {
+            const gDate = parseToDateObject(rawStartDate);
+            const qDate = parseToDateObject(col16_updateDate);
+            if (gDate && qDate) {
+              col10_plannedDate = gDate > qDate ? rawStartDate : col16_updateDate;
+            } else {
+              col10_plannedDate = col16_updateDate || rawStartDate;
+            }
+          }
+
+          // Actual (Col L / col11): VLOOKUP(B&"Done", {'DELEGATION DONE'!B:B & 'DELEGATION DONE'!C:C, 'DELEGATION DONE'!A:A})
+          let doneRecordWithDoneStatus = null;
+          for (let k = taskDoneList.length - 1; k >= 0; k--) {
+            const st = String(taskDoneList[k]['Status'] || '').trim().toLowerCase();
+            if (st === 'done') {
+              doneRecordWithDoneStatus = taskDoneList[k];
+              break;
+            }
+          }
+          const col11_actual = doneRecordWithDoneStatus ? (doneRecordWithDoneStatus['Timestamp'] || "") : (row['Actual'] || "");
+
+          // Delay (Col M / col12): if(K, if(L<>"", if(L>K, L-K, ""), NOW()-K), "")
+          let col12_delay = "";
+          const plannedDateObj = parseToDateObject(col10_plannedDate);
+          if (plannedDateObj) {
+            if (col11_actual) {
+              const actualDateObj = parseToDateObject(col11_actual);
+              if (actualDateObj && actualDateObj.getTime() > plannedDateObj.getTime()) {
+                const diffDays = (actualDateObj.getTime() - plannedDateObj.getTime()) / (1000 * 60 * 60 * 24);
+                col12_delay = diffDays.toFixed(4);
+              }
+            } else {
+              const now = new Date();
+              if (now.getTime() > plannedDateObj.getTime()) {
+                const diffDays = (now.getTime() - plannedDateObj.getTime()) / (1000 * 60 * 60 * 24);
+                col12_delay = diffDays.toFixed(4);
+              }
+            }
+          }
+
+          // Status (Col N / col13): Latest Status from DELEGATION DONE
+          const col13_status = latestDoneRecord ? (latestDoneRecord['Status'] || "") : (row['Status'] || "");
+
+          // Remarks (Col O / col14): Latest Reason from DELEGATION DONE
+          const col14_remarks = latestDoneRecord ? (latestDoneRecord['Reason'] || latestDoneRecord['Remarks'] || "") : (row['Remarks'] || "");
+
+          // Upload Image (Col P / col15): Latest Upload Image
+          let col15_uploadImage = "";
+          if (doneRecordWithDoneStatus && doneRecordWithDoneStatus['Upload Image']) {
+            col15_uploadImage = doneRecordWithDoneStatus['Upload Image'];
+          } else if (latestDoneRecord && latestDoneRecord['Upload Image']) {
+            col15_uploadImage = latestDoneRecord['Upload Image'];
+          } else {
+            col15_uploadImage = row['Upload Imgage'] || row['Upload Image'] || "";
+          }
+
+          // Admin Done (Col T / col19): VLOOKUP(B, {'DELEGATION DONE'!B:B, 'DELEGATION DONE'!P:P})
+          let col19_adminDone = "";
+          for (let k = taskDoneList.length - 1; k >= 0; k--) {
+            const ad = String(taskDoneList[k]['Admin Done'] || '').trim().toLowerCase();
+            if (ad === 'done') {
+              col19_adminDone = "Done";
+              break;
+            }
+          }
+
+          // Filter Condition (Col U / col20):
+          // IF(B=="","", IF(L=="", IF((K<>"")*(K>TODAY()), "Planned", "Pending"), IF(T=="", "Verify Pending", "Done")))
+          let col20_filterCondition = "";
+          if (!taskIdStr) {
+            col20_filterCondition = "";
+          } else if (!col11_actual) {
+            if (plannedDateObj) {
+              const pDay = new Date(plannedDateObj);
+              pDay.setHours(0, 0, 0, 0);
+              if (pDay.getTime() > today.getTime()) {
+                col20_filterCondition = "Planned";
+              } else {
+                col20_filterCondition = "Pending";
+              }
+            } else {
+              col20_filterCondition = "Pending";
+            }
+          } else {
+            if (col19_adminDone && col19_adminDone.toLowerCase() === "done") {
+              col20_filterCondition = "Done";
+            } else {
+              col20_filterCondition = "Verify Pending";
+            }
+          }
 
           const rowData = {
             _id: stableId,
             _rowIndex: rowIndex + 2,
-            _taskId: taskId,
+            _taskId: rawTaskId,
             col0: row['Timestamp'] || "",
-            col1: row['Task ID'] || "",
+            col1: rawTaskId || "",
             col2: row['Department'] || "",
             col3: row['Given By'] || "",
             col4: row['Name'] || "",
@@ -648,17 +838,17 @@ function DelegationDataPage() {
             col7: row['Freq'] || "",
             col8: row['Enable Reminders'] || "",
             col9: row['Require Attachment'] || "",
-            col10: row['Planned Date'] || "",
-            col11: row['Actual'] || "",
-            col12: row['Delay'] || "",
-            col13: row['Status'] || "",
-            col14: row['Remarks'] || "",
-            col15: row['Upload Imgage'] || "",
-            col16: row['Update Date'] || "",
-            col17: row['Color Code For'] || "",
-            col18: row['Color Code'] || "",
-            col19: row['Admin Done'] || "",
-            col20: row['Filter Condition'] || ""
+            col10: col10_plannedDate,
+            col11: col11_actual,
+            col12: col12_delay,
+            col13: col13_status,
+            col14: col14_remarks,
+            col15: col15_uploadImage,
+            col16: col16_updateDate,
+            col17: col17_colorCodeFor,
+            col18: col18_colorCode,
+            col19: col19_adminDone,
+            col20: col20_filterCondition
           };
 
           if (userRole !== "admin") {
@@ -698,14 +888,7 @@ function DelegationDataPage() {
       }
       if (!isBackground) setLoading(false);
     }
-  }, [
-    formatDateToDDMMYYYY,
-    parseGoogleSheetsDate,
-    parseDateFromDDMMYYYY,
-    isEmpty,
-    userRole,
-    username,
-  ]);
+  }, [parseToDateObject, userRole, username]);
 
   useEffect(() => {
     // 100% Real-time direct fetch
@@ -888,11 +1071,10 @@ function DelegationDataPage() {
     setIsSubmitting(true);
 
     try {
-      const username = sessionStorage.getItem("username") || "";
-      const now = new Date();
-      const currentTimestamp = now.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-      const rowsToInsert = [];
+      const delegationUpdates = [];
 
       for (const id of selectedItemsArray) {
         const item = accountData.find((account) => account._id === id);
@@ -919,11 +1101,13 @@ function DelegationDataPage() {
         }
 
         const conditionDate = formattedNextDate || currentTimestamp;
+        const currentSelectedStatus = statusData[id] || 'Done';
+        const rawTaskId = parseInt(item['col1'] || '0', 10) || item['col1'];
 
         rowsToInsert.push({
           Timestamp: currentTimestamp,
-          'Task id': parseInt(item['col1'] || '0', 10) || item['col1'],
-          Status: statusData[id] || 'Done',
+          'Task id': rawTaskId,
+          Status: currentSelectedStatus,
           'Next extend date': formattedNextDate,
           Reason: remarksData[id] || '',
           'Upload Image': imageUrl,
@@ -933,11 +1117,63 @@ function DelegationDataPage() {
           'Given By': item['col3'] || 'Admin',
           'Admin Done': null
         });
+
+        // Compute direct Supabase Delegation table columns update
+        if (rawTaskId) {
+          if (currentSelectedStatus === 'Done') {
+            const plannedDateObj = parseToDateObject(item['col10'] || item['col6']);
+            let computedDelay = '';
+            if (plannedDateObj && now.getTime() > plannedDateObj.getTime()) {
+              const diffDays = (now.getTime() - plannedDateObj.getTime()) / (1000 * 60 * 60 * 24);
+              computedDelay = diffDays.toFixed(4);
+            }
+
+            delegationUpdates.push(
+              supabase.from('Delegation').update({
+                'Actual': currentTimestamp,
+                'Status': 'Done',
+                'Remarks': remarksData[id] || '',
+                'Upload Imgage': imageUrl || item['col15'] || '',
+                'Delay': computedDelay,
+                'Filter Condition': 'Verify Pending'
+              }).eq('Task ID', rawTaskId)
+            );
+          } else if (currentSelectedStatus === 'Extend date') {
+            const nextDateObj = parseToDateObject(formattedNextDate);
+            const isFuture = nextDateObj && nextDateObj.getTime() > today.getTime();
+            const newCount = (parseInt(item['col17'] || 1, 10) || 1) + 1;
+            const newColor = newCount === 2 ? 'Yellow' : newCount >= 3 ? 'Red' : 'Green';
+
+            let computedDelay = '';
+            if (nextDateObj && now.getTime() > nextDateObj.getTime()) {
+              const diffDays = (now.getTime() - nextDateObj.getTime()) / (1000 * 60 * 60 * 24);
+              computedDelay = diffDays.toFixed(4);
+            }
+
+            delegationUpdates.push(
+              supabase.from('Delegation').update({
+                'Update Date': formattedNextDate,
+                'Planned Date': formattedNextDate,
+                'Status': 'Extend date',
+                'Remarks': remarksData[id] || '',
+                'Upload Imgage': imageUrl || item['col15'] || '',
+                'Color Code For': newCount,
+                'Color Code': newColor,
+                'Delay': computedDelay,
+                'Filter Condition': isFuture ? 'Planned' : 'Pending'
+              }).eq('Task ID', rawTaskId)
+            );
+          }
+        }
       }
 
       if (rowsToInsert.length > 0) {
         const { error: insertErr } = await supabase.from('DELEGATION DONE').insert(rowsToInsert);
         if (insertErr) throw insertErr;
+      }
+
+      if (delegationUpdates.length > 0) {
+        await Promise.all(delegationUpdates);
       }
 
       setSelectedItems(new Set());
@@ -957,49 +1193,49 @@ function DelegationDataPage() {
 
   const handleEditRemarks = async (id, currentRemarks, historyItem) => {
     try {
-      const formData = new FormData();
-      formData.append("sheetName", CONFIG.TARGET_SHEET_NAME);
-      formData.append("action", "update");
-      formData.append("rowIndex", historyItem._rowIndex);
+      const newRemarks = tempRemarks[id] || currentRemarks || "";
+      let error = null;
 
-      // Create row data array with empty values for all columns except remarks
-      const rowData = Array(16).fill(""); // Create empty array for 16 columns
-      rowData[4] = tempRemarks[id] || currentRemarks || ""; // Column E (index 4) is remarks
+      if (historyItem._dbId) {
+        const res = await supabase
+          .from('DELEGATION DONE')
+          .update({ Reason: newRemarks })
+          .eq('id', historyItem._dbId);
+        error = res.error;
+      } else if (historyItem.col1) {
+        const res = await supabase
+          .from('DELEGATION DONE')
+          .update({ Reason: newRemarks })
+          .eq('Task id', historyItem.col1);
+        error = res.error;
+      }
 
-      formData.append("rowData", JSON.stringify(rowData));
+      if (error) throw error;
 
-      const response = await fetch(CONFIG.APPS_SCRIPT_URL, {
-        method: "POST",
-        body: formData,
+      // Also persist edited remarks to Supabase Delegation table directly
+      const rawTaskId = historyItem.col1 || historyItem['Task id'] || historyItem['Task ID'];
+      if (rawTaskId) {
+        await supabase
+          .from('Delegation')
+          .update({ Remarks: newRemarks })
+          .eq('Task ID', rawTaskId);
+      }
+
+      setHistoryData((prev) =>
+        prev.map((item) =>
+          item._id === id ? { ...item, col4: newRemarks } : item
+        )
+      );
+      setEditingRemarks((prev) => ({ ...prev, [id]: false }));
+      setSuccessMessage("Remarks updated successfully!");
+
+      setTempRemarks((prev) => {
+        const newTemp = { ...prev };
+        delete newTemp[id];
+        return newTemp;
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
-        // Update local state
-        setHistoryData((prev) =>
-          prev.map((item) =>
-            item._id === id
-              ? { ...item, col4: tempRemarks[id] || currentRemarks || "" }
-              : item
-          )
-        );
-        setEditingRemarks((prev) => ({ ...prev, [id]: false }));
-        setSuccessMessage("Remarks updated successfully!");
-
-        // Clear temporary remarks
-        setTempRemarks((prev) => {
-          const newTemp = { ...prev };
-          delete newTemp[id];
-          return newTemp;
-        });
-      } else {
-        throw new Error(result.error || "Failed to update remarks");
-      }
+      await fetchSheetData();
     } catch (error) {
       console.error("Error updating remarks:", error);
       setSuccessMessage(`Failed to update remarks: ${error.message}`);
@@ -1008,21 +1244,20 @@ function DelegationDataPage() {
 
   const selectedItemsCount = selectedItems.size;
 
-  // NEW: Admin functions for history management
+  // Admin functions for history management
   const handleMarkMultipleDone = async () => {
     if (selectedHistoryItems.length === 0) {
       return;
     }
     if (markingAsDone) return;
 
-    // Open confirmation modal
     setConfirmationModal({
       isOpen: true,
       itemCount: selectedHistoryItems.length,
     });
   };
 
-  // NEW: Confirmation modal component
+  // Confirmation modal component
   const ConfirmationModal = ({ isOpen, itemCount, onConfirm, onCancel }) => {
     if (!isOpen) return null;
 
@@ -1080,51 +1315,60 @@ function DelegationDataPage() {
     setMarkingAsDone(true);
 
     try {
-      const submissionData = selectedHistoryItems.map((historyItem) => ({
-        taskId: historyItem["col1"],
-        rowIndex: historyItem._rowIndex,
-        adminDoneStatus: "Done",
-      }));
+      const updates = [];
 
-      const formData = new FormData();
-      formData.append("sheetName", CONFIG.TARGET_SHEET_NAME);
-      formData.append("action", "updateAdminDone");
-      formData.append("rowData", JSON.stringify(submissionData));
+      for (const historyItem of selectedHistoryItems) {
+        if (historyItem._dbId) {
+          updates.push(
+            supabase
+              .from('DELEGATION DONE')
+              .update({ 'Admin Done': 'Done' })
+              .eq('id', historyItem._dbId)
+          );
+        } else if (historyItem.col1) {
+          updates.push(
+            supabase
+              .from('DELEGATION DONE')
+              .update({ 'Admin Done': 'Done' })
+              .eq('Task id', historyItem.col1)
+          );
+        }
 
-      const response = await fetch(CONFIG.APPS_SCRIPT_URL, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok)
-        throw new Error(`HTTP error! status: ${response.status}`);
-
-      const result = await response.json();
-      if (result.success) {
-        // Update local state to reflect the changes without refetching
-        setHistoryData((prev) =>
-          prev.map((item) => {
-            if (
-              selectedHistoryItems.some((selected) => selected._id === item._id)
-            ) {
-              return { ...item, col15: "Done" };
-            }
-            return item;
-          })
-        );
-
-        setSuccessMessage(
-          `Successfully marked ${selectedHistoryItems.length} items as Admin Done!`
-        );
-        setSelectedHistoryItems([]);
-
-        // Refresh the data to ensure sync with sheet
-        setTimeout(() => {
-          fetchSheetData();
-        }, 1000);
-      } else {
-        throw new Error(result.error || "Failed to mark items as Admin Done");
+        const rawTaskId = historyItem.col1 || historyItem['Task id'] || historyItem['Task ID'];
+        if (rawTaskId) {
+          updates.push(
+            supabase
+              .from('Delegation')
+              .update({
+                'Admin Done': 'Done',
+                'Filter Condition': 'Done'
+              })
+              .eq('Task ID', rawTaskId)
+          );
+        }
       }
+
+      const results = await Promise.all(updates);
+      const hasError = results.find((r) => r && r.error);
+      if (hasError) throw hasError.error;
+
+      setHistoryData((prev) =>
+        prev.map((item) => {
+          if (
+            selectedHistoryItems.some((selected) => selected._id === item._id)
+          ) {
+            return { ...item, col10: "Done", col15: "Done" };
+          }
+          return item;
+        })
+      );
+
+      setSuccessMessage(
+        `Successfully marked ${selectedHistoryItems.length} items as Admin Done!`
+      );
+      setSelectedHistoryItems([]);
+
+      await fetchSheetData();
     } catch (error) {
       console.error("Error marking tasks as Admin Done:", error);
       setSuccessMessage(`Failed to mark tasks as Admin Done: ${error.message}`);
@@ -1136,6 +1380,12 @@ function DelegationDataPage() {
   return (
     <AdminLayout>
       <div className="space-y-6">
+        <ConfirmationModal
+          isOpen={confirmationModal.isOpen}
+          itemCount={confirmationModal.itemCount}
+          onConfirm={confirmMarkDone}
+          onCancel={() => setConfirmationModal({ isOpen: false, itemCount: 0 })}
+        />
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <h1 className="text-2xl font-bold tracking-tight text-purple-700">
             {showHistory

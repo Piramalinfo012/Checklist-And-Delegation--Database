@@ -136,6 +136,43 @@ export default function AdminSettings() {
   const [dumpLogs, setDumpLogs] = useState([]);
   const [clearBeforeDump, setClearBeforeDump] = useState(true);
 
+  const [appsScriptUrl, setAppsScriptUrl] = useState(() => {
+    return localStorage.getItem('dump_apps_script_url') || APPS_SCRIPT_URL;
+  });
+  const [isAppsScriptSaved, setIsAppsScriptSaved] = useState(false);
+
+  const [targetSheetUrl, setTargetSheetUrl] = useState(() => {
+    return localStorage.getItem('dump_target_sheet_url') || 'https://docs.google.com/spreadsheets/d/1r3YHyjqv24gZXBI9IofAhodnlBuDTA3sgyzU_PNCaQg/edit';
+  });
+  const [isUrlSaved, setIsUrlSaved] = useState(false);
+
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [connectionTestResult, setConnectionTestResult] = useState(null);
+
+  // Helper to extract clean Google Spreadsheet ID from URL or raw ID
+  const extractSpreadsheetId = (urlOrId) => {
+    if (!urlOrId) return '';
+    const trimmed = String(urlOrId).trim();
+    const match = trimmed.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    if (match && match[1]) return match[1];
+    if (!trimmed.includes('/') && trimmed.length > 15) return trimmed;
+    return trimmed;
+  };
+
+  const handleAppsScriptUrlChange = (val) => {
+    setAppsScriptUrl(val);
+    localStorage.setItem('dump_apps_script_url', val);
+    setIsAppsScriptSaved(true);
+    setTimeout(() => setIsAppsScriptSaved(false), 2500);
+  };
+
+  const handleTargetSheetUrlChange = (val) => {
+    setTargetSheetUrl(val);
+    localStorage.setItem('dump_target_sheet_url', val);
+    setIsUrlSaved(true);
+    setTimeout(() => setIsUrlSaved(false), 2500);
+  };
+
   // Table Filters & Sorting for Unique Templates
   const [searchTerm, setSearchTerm] = useState('');
   const [freqFilter, setFreqFilter] = useState('ALL');
@@ -149,7 +186,7 @@ export default function AdminSettings() {
     setLoading(true);
     try {
       const [uRes, cCountRes, dCountRes, calRes, holRes, wRes] = await Promise.all([
-        supabase.from('Unique').select('*'),
+        supabase.from('Unique').select('*').limit(3000),
         supabase.from('Checklist').select('*', { count: 'exact', head: true }),
         supabase.from('Delegation').select('*', { count: 'exact', head: true }),
         supabase.from('Working Day Calendar').select('*'),
@@ -510,7 +547,7 @@ export default function AdminSettings() {
     setIsRunningTrigger(false);
 
     // Refresh templates data to show updated Last Date
-    const { data: uData } = await supabase.from('Unique').select('*');
+    const { data: uData } = await supabase.from('Unique').select('*').limit(3000);
     if (uData) setTemplates(uData);
 
     const savedHistory = JSON.parse(localStorage.getItem('task_trigger_history') || '[]');
@@ -568,29 +605,143 @@ export default function AdminSettings() {
     setDumpLogs(prev => [...prev, { time: new Date().toLocaleTimeString(), message: msg, type }]);
   };
 
+  // Test Connection to Google Apps Script & Target Google Sheet
+  const handleTestConnection = async () => {
+    if (isTestingConnection) return;
+    const scriptUrl = (appsScriptUrl || APPS_SCRIPT_URL).trim();
+    const targetSpreadsheetId = extractSpreadsheetId(targetSheetUrl);
+
+    if (!scriptUrl) {
+      alert('Please enter a Google Apps Script Web App URL first!');
+      return;
+    }
+    if (!targetSpreadsheetId) {
+      alert('Please enter or paste a valid Google Sheet URL / ID in the Target Google Sheet field!');
+      return;
+    }
+
+    setIsTestingConnection(true);
+    setConnectionTestResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('action', 'testConnection');
+      formData.append('spreadsheetId', targetSpreadsheetId);
+      formData.append('spreadsheetUrl', targetSheetUrl);
+
+      const res = await fetch(scriptUrl, { method: 'POST', body: formData });
+      if (!res.ok) {
+        throw new Error(`Google Apps Script returned HTTP status ${res.status}: ${res.statusText}`);
+      }
+
+      const data = await res.json();
+      if (data.success) {
+        setConnectionTestResult({
+          success: true,
+          message: data.message || `Connected to "${data.spreadsheetName || 'Google Sheet'}"`,
+          spreadsheetName: data.spreadsheetName,
+          spreadsheetId: data.spreadsheetId,
+          sheets: data.sheets || []
+        });
+      } else {
+        setConnectionTestResult({
+          success: false,
+          message: data.error || 'Failed to connect to Google Sheet. Check permissions & ID.'
+        });
+      }
+    } catch (err) {
+      console.error('Connection test failed:', err);
+      setConnectionTestResult({
+        success: false,
+        message: `Connection Failed: ${err.message || err}. Tip: Ensure Apps Script is deployed as "Web App" with access set to "Anyone".`
+      });
+    } finally {
+      setIsTestingConnection(false);
+    }
+  };
+
+  // Fast parallel bulk fetch from Supabase (fetches all 10,000+ rows in parallel pages)
+  const fetchAllTableRows = async (tableName) => {
+    // 1. Get exact total count from Supabase
+    const { count, error: countErr } = await supabase
+      .from(tableName)
+      .select('*', { count: 'exact', head: true });
+
+    if (countErr) throw countErr;
+    const total = count || 0;
+    if (total === 0) return [];
+
+    const PAGE_SIZE = 1000;
+    const totalPages = Math.ceil(total / PAGE_SIZE);
+    
+    // Fetch pages in parallel batches
+    const allRows = [];
+    const CONCURRENT_BATCH = 5;
+
+    for (let i = 0; i < totalPages; i += CONCURRENT_BATCH) {
+      const pagePromises = [];
+      for (let j = i; j < Math.min(i + CONCURRENT_BATCH, totalPages); j++) {
+        const from = j * PAGE_SIZE;
+        const to = Math.min((j + 1) * PAGE_SIZE - 1, total - 1);
+        pagePromises.push(
+          supabase
+            .from(tableName)
+            .select('*')
+            .range(from, to)
+        );
+      }
+
+      const results = await Promise.all(pagePromises);
+      for (const res of results) {
+        if (res.error) throw res.error;
+        if (res.data) allRows.push(...res.data);
+      }
+    }
+
+    return allRows;
+  };
+
   const handleDumpToSheet = async (dumpType = 'all') => {
     if (isDumping) return;
+
+    const currentScriptUrl = (appsScriptUrl || APPS_SCRIPT_URL).trim();
+    const targetSpreadsheetId = extractSpreadsheetId(targetSheetUrl);
+
+    if (!currentScriptUrl) {
+      alert('Please enter or paste your Google Apps Script Web App URL!');
+      return;
+    }
+
+    if (!targetSpreadsheetId) {
+      alert('Please enter or paste a valid Google Sheet URL / ID in the Target Google Sheet field!');
+      return;
+    }
+
     setIsDumping(true);
     setDumpProgress(5);
     setDumpLogs([]);
-    setDumpStatusMsg('Starting data dump to Google Sheet...');
-    addDumpLog(`Starting ${dumpType.toUpperCase()} data dump process...`);
+    setDumpStatusMsg('Starting high-speed data dump to Google Sheet...');
+    addDumpLog(`Target Google Sheet ID: ${targetSpreadsheetId}`);
+    addDumpLog(`Apps Script Web App: ${currentScriptUrl.slice(0, 40)}...`);
+    addDumpLog(`🚀 Starting continuous bulk ${dumpType.toUpperCase()} data dump...`);
+
+    const BATCH_SIZE = 2500; // Optimal reliable batch size
 
     try {
       // 1. DUMP CHECKLIST DATA
       if (dumpType === 'checklist' || dumpType === 'all') {
-        addDumpLog('Fetching Checklist table data from Supabase...');
-        setDumpStatusMsg('Reading Checklist data from Supabase...');
+        addDumpLog('Fetching ALL Checklist table records from Supabase in bulk...');
+        setDumpStatusMsg('Reading Checklist records from Supabase...');
         
-        const { data: checklistRows, error: cErr } = await supabase
-          .from('Checklist')
-          .select('*')
-          .order('Task ID', { ascending: true })
-          .limit(4000); // Recent 4000 rows for sheet sync
+        const checklistRows = await fetchAllTableRows('Checklist');
+        addDumpLog(`⚡ Fetched ALL ${checklistRows.length.toLocaleString()} total records from Checklist table!`);
+        setDumpProgress(20);
 
-        if (cErr) throw cErr;
-        addDumpLog(`Fetched ${checklistRows.length} rows from Checklist table.`);
-        setDumpProgress(30);
+        const checklistHeaders = [
+          'Timestamp', 'Task ID', 'Department', 'Given By', 'Name', 'Tast Descriptions',
+          'Task Start Date', 'Freq', 'Enable Reminders', 'Require Attachment', 'Actual',
+          'Delay', 'Status', 'Remarks', 'Uploaded Image', 'Admin Done', 'Leave'
+        ];
 
         const formattedChecklistData = checklistRows.map(r => [
           r['Timestamp'] || '',
@@ -612,68 +763,302 @@ export default function AdminSettings() {
           r['Leave'] || ''
         ]);
 
-        addDumpLog(`Sending Checklist data to Google Sheet (Batch of ${formattedChecklistData.length} rows)...`);
-        setDumpStatusMsg('Writing Checklist data to Google Sheet...');
+        addDumpLog(`Writing total ${formattedChecklistData.length.toLocaleString()} Checklist rows to Google Sheet...`);
+        setDumpStatusMsg(`Dumping ${formattedChecklistData.length.toLocaleString()} rows to Checklist sheet...`);
 
-        const BATCH_SIZE = 500;
-        for (let i = 0; i < formattedChecklistData.length; i += BATCH_SIZE) {
+        const totalBatches = Math.ceil(formattedChecklistData.length / BATCH_SIZE);
+        for (let b = 0; b < totalBatches; b++) {
+          const i = b * BATCH_SIZE;
           const chunk = formattedChecklistData.slice(i, i + BATCH_SIZE);
-          const formData = new FormData();
-          formData.append('action', 'dumpSheet');
-          formData.append('sheetName', 'Checklist');
-          formData.append('clearExisting', i === 0 && clearBeforeDump ? 'true' : 'false');
-          formData.append('rowData', JSON.stringify(chunk));
-
-          const res = await fetch(APPS_SCRIPT_URL, { method: 'POST', body: formData });
-          if (!res.ok) console.warn('Google Sheet batch push response warning');
           
-          const pct = Math.round(30 + ((i + chunk.length) / formattedChecklistData.length) * 35);
+          let attempts = 0;
+          let batchSuccess = false;
+          while (!batchSuccess && attempts < 3) {
+            attempts++;
+            try {
+              const formData = new FormData();
+              formData.append('action', 'dumpSheet');
+              formData.append('sheetName', 'Checklist');
+              formData.append('spreadsheetId', targetSpreadsheetId);
+              formData.append('spreadsheetUrl', targetSheetUrl);
+              formData.append('headers', JSON.stringify(checklistHeaders));
+              formData.append('clearExisting', b === 0 && clearBeforeDump ? 'true' : 'false');
+              formData.append('rowData', JSON.stringify(chunk));
+
+              addDumpLog(`Batch ${b + 1}/${totalBatches}: Sending rows ${i + 1} to ${i + chunk.length} of ${formattedChecklistData.length}...`);
+              const res = await fetch(currentScriptUrl, { method: 'POST', body: formData });
+              if (!res.ok) throw new Error(`HTTP status ${res.status}: ${res.statusText}`);
+              const resData = await res.json();
+              if (resData && resData.success === false) throw new Error(resData.error || 'Apps Script error');
+              batchSuccess = true;
+            } catch (err) {
+              console.warn(`Checklist Batch ${b + 1} attempt ${attempts} error:`, err);
+              if (attempts >= 3) throw err;
+              addDumpLog(`⚠️ Retrying Batch ${b + 1} (Attempt ${attempts + 1})...`, 'warning');
+              await new Promise(r => setTimeout(r, 1500));
+            }
+          }
+
+          const pct = Math.round(20 + ((b + 1) / totalBatches) * 40);
           setDumpProgress(pct);
-          addDumpLog(`Dumped Checklist rows ${i + 1} to ${i + chunk.length}...`);
+          addDumpLog(`✅ Dumped ${i + chunk.length} / ${formattedChecklistData.length} Checklist rows.`);
         }
 
-        addDumpLog(`✅ Checklist sheet dump finished successfully!`, 'success');
+        addDumpLog(`🎉 Checklist sheet dump finished successfully (${formattedChecklistData.length.toLocaleString()} rows)!`, 'success');
       }
 
       // 2. DUMP DELEGATION DATA
       if (dumpType === 'delegation' || dumpType === 'all') {
-        addDumpLog('Fetching Delegation & DELEGATION DONE from Supabase...');
-        setDumpStatusMsg('Reading Delegation data from Supabase...');
-        setDumpProgress(70);
+        addDumpLog('Fetching ALL Delegation & DELEGATION DONE records from Supabase...');
+        setDumpStatusMsg('Reading Delegation records from Supabase...');
+        setDumpProgress(65);
 
-        const [delRes, doneRes] = await Promise.all([
-          supabase.from('Delegation').select('*').order('Task ID', { ascending: true }),
-          supabase.from('DELEGATION DONE').select('*').order('id', { ascending: true })
+        const [delRows, doneRows] = await Promise.all([
+          fetchAllTableRows('Delegation'),
+          fetchAllTableRows('DELEGATION DONE')
         ]);
 
-        if (delRes.data && delRes.data.length > 0) {
-          const formattedDelegation = delRes.data.map(r => [
-            r['Timestamp'] || '',
-            r['Task ID'] || '',
-            r['Department'] || '',
-            r['Given By'] || '',
-            r['Name'] || '',
-            r['Task Description'] || '',
-            r['Task Start Date'] || '',
-            r['Freq'] || '',
-            r['Enable Reminders'] || '',
-            r['Require Attachment'] || '',
-            r['End Date'] || ''
-          ]);
+        const delHeaders = [
+          'Timestamp', 'Task ID', 'Department', 'Given By', 'Name', 'Task Description',
+          'Task Start Date', 'Freq', 'Enable Reminders', 'Require Attachment',
+          'Planned Date', 'Actual', 'Delay', 'Status', 'Remarks',
+          'Upload Imgage', 'Update Date', 'Color Code For', 'Color Code', 'Admin Done', 'Filter Condition'
+        ];
 
-          const formData = new FormData();
-          formData.append('action', 'dumpSheet');
-          formData.append('sheetName', 'DELEGATION');
-          formData.append('clearExisting', clearBeforeDump ? 'true' : 'false');
-          formData.append('rowData', JSON.stringify(formattedDelegation));
+        if (delRows && delRows.length > 0) {
+          const doneByTaskId = new Map();
+          if (doneRows && doneRows.length > 0) {
+            doneRows.forEach((row) => {
+              const rawTaskId = row['Task id'] ?? row['Task ID'] ?? row['taskId'] ?? '';
+              const taskIdStr = String(rawTaskId).trim();
+              if (taskIdStr) {
+                if (!doneByTaskId.has(taskIdStr)) {
+                  doneByTaskId.set(taskIdStr, []);
+                }
+                doneByTaskId.get(taskIdStr).push(row);
+              }
+            });
+          }
 
-          addDumpLog(`Writing ${formattedDelegation.length} rows to DELEGATION Google Sheet...`);
-          await fetch(APPS_SCRIPT_URL, { method: 'POST', body: formData });
-          addDumpLog(`✅ DELEGATION sheet dump finished!`, 'success');
+          const parseDumpDate = (val) => {
+            if (!val) return null;
+            if (val instanceof Date && !isNaN(val.getTime())) return val;
+            if (typeof val !== 'string') return null;
+            val = val.trim();
+            if (!val) return null;
+            const dmyMatch = val.match(
+              /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})(?:[,\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?(?:\s*(am|pm))?)?/i
+            );
+            if (dmyMatch) {
+              const day = parseInt(dmyMatch[1], 10);
+              const month = parseInt(dmyMatch[2], 10) - 1;
+              const year = parseInt(dmyMatch[3], 10);
+              let hours = dmyMatch[4] ? parseInt(dmyMatch[4], 10) : 0;
+              const minutes = dmyMatch[5] ? parseInt(dmyMatch[5], 10) : 0;
+              const seconds = dmyMatch[6] ? parseInt(dmyMatch[6], 10) : 0;
+              const ampm = dmyMatch[7] ? dmyMatch[7].toLowerCase() : null;
+              if (ampm === 'pm' && hours < 12) hours += 12;
+              if (ampm === 'am' && hours === 12) hours = 0;
+              return new Date(year, month, day, hours, minutes, seconds);
+            }
+            const ymdMatch = val.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/);
+            if (ymdMatch) {
+              return new Date(
+                parseInt(ymdMatch[1], 10),
+                parseInt(ymdMatch[2], 10) - 1,
+                parseInt(ymdMatch[3], 10)
+              );
+            }
+            const parsed = new Date(val);
+            if (!isNaN(parsed.getTime())) return parsed;
+            return null;
+          };
+
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+
+          const formattedDelegation = delRows.map((r) => {
+            const rawTaskId = r['Task ID'] ?? r['Task id'] ?? '';
+            const taskIdStr = String(rawTaskId).trim();
+            const taskDoneList = taskIdStr ? doneByTaskId.get(taskIdStr) || [] : [];
+            const doneCount = taskDoneList.length;
+
+            const col17_colorCodeFor = doneCount > 0 ? doneCount : r['Color Code For'] || 1;
+            let col18_colorCode = 'Green';
+            if (col17_colorCodeFor === 2) {
+              col18_colorCode = 'Yellow';
+            } else if (col17_colorCodeFor >= 3) {
+              col18_colorCode = 'Red';
+            }
+
+            const latestDoneRecord =
+              taskDoneList.length > 0 ? taskDoneList[taskDoneList.length - 1] : null;
+
+            let latestExtendDate = '';
+            for (let k = taskDoneList.length - 1; k >= 0; k--) {
+              if (taskDoneList[k]['Next extend date']) {
+                latestExtendDate = taskDoneList[k]['Next extend date'];
+                break;
+              }
+            }
+            const col16_updateDate = latestExtendDate || r['Update Date'] || '';
+
+            const rawStartDate = r['Task Start Date'] || '';
+            let col10_plannedDate = '';
+            if (!rawStartDate && !col16_updateDate) {
+              col10_plannedDate = '';
+            } else if (rawStartDate && !col16_updateDate) {
+              col10_plannedDate = rawStartDate;
+            } else if (!rawStartDate && col16_updateDate) {
+              col10_plannedDate = col16_updateDate;
+            } else {
+              const gDate = parseDumpDate(rawStartDate);
+              const qDate = parseDumpDate(col16_updateDate);
+              if (gDate && qDate) {
+                col10_plannedDate = gDate > qDate ? rawStartDate : col16_updateDate;
+              } else {
+                col10_plannedDate = col16_updateDate || rawStartDate;
+              }
+            }
+
+            let doneRecordWithDoneStatus = null;
+            for (let k = taskDoneList.length - 1; k >= 0; k--) {
+              const st = String(taskDoneList[k]['Status'] || '').trim().toLowerCase();
+              if (st === 'done') {
+                doneRecordWithDoneStatus = taskDoneList[k];
+                break;
+              }
+            }
+            const col11_actual = doneRecordWithDoneStatus
+              ? doneRecordWithDoneStatus['Timestamp'] || ''
+              : r['Actual'] || '';
+
+            let col12_delay = '';
+            const plannedDateObj = parseDumpDate(col10_plannedDate);
+            if (plannedDateObj) {
+              if (col11_actual) {
+                const actualDateObj = parseDumpDate(col11_actual);
+                if (actualDateObj && actualDateObj.getTime() > plannedDateObj.getTime()) {
+                  const diffDays =
+                    (actualDateObj.getTime() - plannedDateObj.getTime()) / (1000 * 60 * 60 * 24);
+                  col12_delay = diffDays.toFixed(4);
+                }
+              } else {
+                const now = new Date();
+                if (now.getTime() > plannedDateObj.getTime()) {
+                  const diffDays =
+                    (now.getTime() - plannedDateObj.getTime()) / (1000 * 60 * 60 * 24);
+                  col12_delay = diffDays.toFixed(4);
+                }
+              }
+            }
+
+            const col13_status = latestDoneRecord
+              ? latestDoneRecord['Status'] || ''
+              : r['Status'] || '';
+            const col14_remarks = latestDoneRecord
+              ? latestDoneRecord['Reason'] || latestDoneRecord['Remarks'] || ''
+              : r['Remarks'] || '';
+
+            let col15_uploadImage = '';
+            if (doneRecordWithDoneStatus && doneRecordWithDoneStatus['Upload Image']) {
+              col15_uploadImage = doneRecordWithDoneStatus['Upload Image'];
+            } else if (latestDoneRecord && latestDoneRecord['Upload Image']) {
+              col15_uploadImage = latestDoneRecord['Upload Image'];
+            } else {
+              col15_uploadImage = r['Upload Imgage'] || r['Upload Image'] || '';
+            }
+
+            let col19_adminDone = '';
+            for (let k = taskDoneList.length - 1; k >= 0; k--) {
+              const ad = String(taskDoneList[k]['Admin Done'] || '').trim().toLowerCase();
+              if (ad === 'done') {
+                col19_adminDone = 'Done';
+                break;
+              }
+            }
+
+            let col20_filterCondition = '';
+            if (!taskIdStr) {
+              col20_filterCondition = '';
+            } else if (!col11_actual) {
+              if (plannedDateObj) {
+                const pDay = new Date(plannedDateObj);
+                pDay.setHours(0, 0, 0, 0);
+                if (pDay.getTime() > today.getTime()) {
+                  col20_filterCondition = 'Planned';
+                } else {
+                  col20_filterCondition = 'Pending';
+                }
+              } else {
+                col20_filterCondition = 'Pending';
+              }
+            } else {
+              if (col19_adminDone && col19_adminDone.toLowerCase() === 'done') {
+                col20_filterCondition = 'Done';
+              } else {
+                col20_filterCondition = 'Verify Pending';
+              }
+            }
+
+            return [
+              r['Timestamp'] || '',
+              r['Task ID'] || '',
+              r['Department'] || '',
+              r['Given By'] || '',
+              r['Name'] || '',
+              r['Task Description'] || '',
+              r['Task Start Date'] || '',
+              r['Freq'] || '',
+              r['Enable Reminders'] || '',
+              r['Require Attachment'] || '',
+              col10_plannedDate,
+              col11_actual,
+              col12_delay,
+              col13_status,
+              col14_remarks,
+              col15_uploadImage,
+              col16_updateDate,
+              col17_colorCodeFor,
+              col18_colorCode,
+              col19_adminDone,
+              col20_filterCondition
+            ];
+          });
+
+          addDumpLog(
+            `Writing total ${formattedDelegation.length.toLocaleString()} rows to DELEGATION Google Sheet...`
+          );
+          const totalDelBatches = Math.ceil(formattedDelegation.length / BATCH_SIZE);
+
+          for (let b = 0; b < totalDelBatches; b++) {
+            const i = b * BATCH_SIZE;
+            const chunk = formattedDelegation.slice(i, i + BATCH_SIZE);
+            const formData = new FormData();
+            formData.append('action', 'dumpSheet');
+            formData.append('sheetName', 'DELEGATION');
+            formData.append('spreadsheetId', targetSpreadsheetId);
+            formData.append('spreadsheetUrl', targetSheetUrl);
+            formData.append('headers', JSON.stringify(delHeaders));
+            formData.append('clearExisting', b === 0 && clearBeforeDump ? 'true' : 'false');
+            formData.append('rowData', JSON.stringify(chunk));
+
+            const res = await fetch(currentScriptUrl, { method: 'POST', body: formData });
+            if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+          }
+          addDumpLog(
+            `🎉 DELEGATION sheet dump finished (${formattedDelegation.length.toLocaleString()} rows)!`,
+            'success'
+          );
         }
 
-        if (doneRes.data && doneRes.data.length > 0) {
-          const formattedDone = doneRes.data.map(r => [
+        const doneHeaders = [
+          'Timestamp', 'Task id', 'Status', 'Next extend date', 'Reason', 'Upload Image',
+          'Condition Date', 'Name', 'Task Description', 'Given By', 'Admin Done'
+        ];
+
+        if (doneRows && doneRows.length > 0) {
+          const formattedDone = doneRows.map(r => [
             r['Timestamp'] || '',
             r['Task id'] || '',
             r['Status'] || '',
@@ -687,23 +1072,37 @@ export default function AdminSettings() {
             r['Admin Done'] || ''
           ]);
 
-          const formDone = new FormData();
-          formDone.append('action', 'dumpSheet');
-          formDone.append('sheetName', 'DELEGATION DONE');
-          formDone.append('clearExisting', clearBeforeDump ? 'true' : 'false');
-          formDone.append('rowData', JSON.stringify(formattedDone));
+          addDumpLog(`Writing total ${formattedDone.length.toLocaleString()} rows to DELEGATION DONE Google Sheet...`);
+          const totalDoneBatches = Math.ceil(formattedDone.length / BATCH_SIZE);
 
-          addDumpLog(`Writing ${formattedDone.length} rows to DELEGATION DONE Google Sheet...`);
-          await fetch(APPS_SCRIPT_URL, { method: 'POST', body: formDone });
-          addDumpLog(`✅ DELEGATION DONE sheet dump finished!`, 'success');
+          for (let b = 0; b < totalDoneBatches; b++) {
+            const i = b * BATCH_SIZE;
+            const chunk = formattedDone.slice(i, i + BATCH_SIZE);
+            const formDone = new FormData();
+            formDone.append('action', 'dumpSheet');
+            formDone.append('sheetName', 'DELEGATION DONE');
+            formDone.append('spreadsheetId', targetSpreadsheetId);
+            formDone.append('spreadsheetUrl', targetSheetUrl);
+            formDone.append('headers', JSON.stringify(doneHeaders));
+            formDone.append('clearExisting', b === 0 && clearBeforeDump ? 'true' : 'false');
+            formDone.append('rowData', JSON.stringify(chunk));
+
+            const res = await fetch(currentScriptUrl, { method: 'POST', body: formDone });
+            if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+          }
+          addDumpLog(`🎉 DELEGATION DONE sheet dump finished (${formattedDone.length.toLocaleString()} rows)!`, 'success');
         }
       }
 
       // 3. DUMP WHATSAPP USERS DATA
       if (dumpType === 'whatsapp' || dumpType === 'all') {
         addDumpLog('Fetching Whatsapp Users from Supabase...');
-        const { data: whatsappRows } = await supabase.from('Whatsapp').select('*');
+        const whatsappRows = await fetchAllTableRows('Whatsapp');
         if (whatsappRows && whatsappRows.length > 0) {
+          const whatsappHeaders = [
+            'Department', 'Given By', 'Username', 'password', 'Role', 'Email', 'Number', 'Photo'
+          ];
+
           const formattedWhatsapp = whatsappRows.map(r => [
             r['Department'] || '',
             r['Given By'] || '',
@@ -718,12 +1117,16 @@ export default function AdminSettings() {
           const formW = new FormData();
           formW.append('action', 'dumpSheet');
           formW.append('sheetName', 'Whatsapp');
+          formW.append('spreadsheetId', targetSpreadsheetId);
+          formW.append('spreadsheetUrl', targetSheetUrl);
+          formW.append('headers', JSON.stringify(whatsappHeaders));
           formW.append('clearExisting', clearBeforeDump ? 'true' : 'false');
           formW.append('rowData', JSON.stringify(formattedWhatsapp));
 
           addDumpLog(`Writing ${formattedWhatsapp.length} rows to Whatsapp Google Sheet...`);
-          await fetch(APPS_SCRIPT_URL, { method: 'POST', body: formW });
-          addDumpLog(`✅ Whatsapp Users sheet dump finished!`, 'success');
+          const res = await fetch(currentScriptUrl, { method: 'POST', body: formW });
+          if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+          addDumpLog(`🎉 Whatsapp Users sheet dump finished!`, 'success');
         }
       }
 
@@ -1417,6 +1820,180 @@ export default function AdminSettings() {
             </label>
           </div>
 
+          {/* Configuration: Apps Script URL & Target Google Sheet URL/ID */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-50 via-indigo-50/40 to-slate-50 border border-indigo-100/80 shadow-sm space-y-4">
+            
+            {/* Field 1: Google Apps Script Web App URL */}
+            <div className="space-y-1.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <div className="flex items-center gap-2">
+                  <Terminal className="h-4 w-4 text-indigo-600" />
+                  <label className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                    Google Apps Script Web App URL
+                  </label>
+                  {isAppsScriptSaved && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold animate-in fade-in">
+                      <Check className="h-3 w-3" /> Saved
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleAppsScriptUrlChange(APPS_SCRIPT_URL)}
+                  className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 underline self-start sm:self-auto"
+                  title="Reset to default deployment script URL"
+                >
+                  Reset to Default Script URL
+                </button>
+              </div>
+
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  value={appsScriptUrl}
+                  onChange={(e) => handleAppsScriptUrlChange(e.target.value)}
+                  placeholder="https://script.google.com/macros/s/XXXXX/exec"
+                  className="w-full pl-3.5 pr-8 py-2.5 bg-white border border-slate-300 focus:border-indigo-500 rounded-xl text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-inner"
+                />
+                {appsScriptUrl && (
+                  <button
+                    type="button"
+                    onClick={() => handleAppsScriptUrlChange('')}
+                    className="absolute right-2.5 text-slate-400 hover:text-slate-600 p-1"
+                    title="Clear Apps Script URL"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Google Apps Script Web App deployment link (e.g. <code className="text-indigo-700 bg-indigo-50 px-1 rounded">https://script.google.com/macros/s/.../exec</code>). Yahan naya deployed Apps Script URL paste kar sakte hain.
+              </p>
+            </div>
+
+            {/* Field 2: Target Google Sheet URL / ID */}
+            <div className="space-y-1.5 pt-3 border-t border-indigo-100/60">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <div className="flex items-center gap-2">
+                  <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                  <label className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                    Target Google Sheet URL / Spreadsheet ID
+                  </label>
+                  {isUrlSaved && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold animate-in fade-in">
+                      <Check className="h-3 w-3" /> Saved
+                    </span>
+                  )}
+                </div>
+                {extractSpreadsheetId(targetSheetUrl) && (
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono">
+                    <span className="text-slate-400">Extracted ID:</span>
+                    <span className="font-bold text-indigo-700 bg-indigo-100/70 px-2 py-0.5 rounded-md truncate max-w-[200px] sm:max-w-[300px]">
+                      {extractSpreadsheetId(targetSheetUrl)}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={targetSheetUrl}
+                    onChange={(e) => handleTargetSheetUrlChange(e.target.value)}
+                    placeholder="Paste Google Sheet URL (e.g. https://docs.google.com/spreadsheets/d/1r3YHy.../edit) or raw Sheet ID"
+                    className="w-full pl-3.5 pr-8 py-2.5 bg-white border border-slate-300 focus:border-indigo-500 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-inner"
+                  />
+                  {targetSheetUrl && (
+                    <button
+                      type="button"
+                      onClick={() => handleTargetSheetUrlChange('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs p-1"
+                      title="Clear URL"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {targetSheetUrl && (
+                  <a
+                    href={targetSheetUrl.startsWith('http') ? targetSheetUrl : `https://docs.google.com/spreadsheets/d/${targetSheetUrl}/edit`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0"
+                    title="Open Target Google Sheet in new tab"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5 text-indigo-600" />
+                    <span>Open Sheet</span>
+                  </a>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Jis Google Sheet me data dump karna hai uska URL ya Sheet ID yahan paste karein.
+              </p>
+            </div>
+
+            {/* Test Connection Button & Status Output */}
+            <div className="pt-3 border-t border-indigo-100/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={handleTestConnection}
+                disabled={isTestingConnection || !targetSheetUrl || !appsScriptUrl}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-indigo-500/20 active:scale-95 cursor-pointer"
+              >
+                {isTestingConnection ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    <span>Testing Connection...</span>
+                  </>
+                ) : (
+                  <>
+                    <Zap className="h-3.5 w-3.5" />
+                    <span>Test Connection (Verify Sheet &amp; Script)</span>
+                  </>
+                )}
+              </button>
+
+              <span className="text-[11px] text-slate-500 italic">
+                * Test Connection click karke check karein ki Script aur Sheet connect ho rahe hain ya nahi.
+              </span>
+            </div>
+
+            {/* Test Connection Result Card */}
+            {connectionTestResult && (
+              <div className={`p-3.5 rounded-xl border text-xs flex items-start gap-2.5 animate-in fade-in ${
+                connectionTestResult.success 
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900' 
+                  : 'bg-rose-50 border-rose-200 text-rose-900'
+              }`}>
+                {connectionTestResult.success ? (
+                  <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                )}
+                <div className="space-y-1">
+                  <div className="font-bold">{connectionTestResult.message}</div>
+                  {connectionTestResult.sheets && connectionTestResult.sheets.length > 0 && (
+                    <div className="text-[11px] opacity-90">
+                      Existing Sheet Tabs: <span className="font-mono font-semibold">{connectionTestResult.sheets.join(', ')}</span>
+                    </div>
+                  )}
+                  {!connectionTestResult.success && (
+                    <div className="text-[11px] text-rose-700 mt-1 leading-relaxed">
+                      👉 <strong>Checklist for Resolution:</strong><br />
+                      1. Google Apps Script me <code className="bg-rose-100 px-1 py-0.5 rounded">apps-script-Code-final.gs</code> ka latest code paste karein.<br />
+                      2. <strong>Deploy &gt; New deployment &gt; Select type: Web App</strong> karein.<br />
+                      3. <strong>Execute as: Me</strong> aur <strong>Who has access: Anyone</strong> select karein.<br />
+                      4. Google Sheet me edit access allow hona chahiye.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+          </div>
+
           {/* Dump Action Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             
@@ -1441,14 +2018,14 @@ export default function AdminSettings() {
                 <button
                   onClick={() => handleDumpToSheet('checklist')}
                   disabled={isDumping}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition-all active:scale-95 disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                 >
                   <UploadCloud className={`h-4 w-4 ${isDumping ? 'animate-bounce' : ''}`} />
                   <span>Dump Checklist to Google Sheet</span>
                 </button>
                 <button
                   onClick={() => handleDownloadCSV('Checklist')}
-                  className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl font-semibold text-[11px] text-indigo-700 bg-white border border-indigo-200 hover:bg-indigo-50 transition-colors"
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl font-semibold text-[11px] text-indigo-700 bg-white border border-indigo-200 hover:bg-indigo-50 transition-colors cursor-pointer"
                 >
                   <Download className="h-3.5 w-3.5" />
                   <span>Download Checklist CSV</span>
@@ -1477,7 +2054,7 @@ export default function AdminSettings() {
                 <button
                   onClick={() => handleDumpToSheet('delegation')}
                   disabled={isDumping}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-purple-600 hover:bg-purple-700 shadow-md shadow-purple-600/20 transition-all active:scale-95 disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-purple-600 hover:bg-purple-700 shadow-md shadow-purple-600/20 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                 >
                   <UploadCloud className={`h-4 w-4 ${isDumping ? 'animate-bounce' : ''}`} />
                   <span>Dump Delegation to Google Sheet</span>
@@ -1485,14 +2062,14 @@ export default function AdminSettings() {
                 <div className="grid grid-cols-2 gap-1.5">
                   <button
                     onClick={() => handleDownloadCSV('Delegation')}
-                    className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl font-semibold text-[10px] text-purple-700 bg-white border border-purple-200 hover:bg-purple-50"
+                    className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl font-semibold text-[10px] text-purple-700 bg-white border border-purple-200 hover:bg-purple-50 cursor-pointer"
                   >
                     <Download className="h-3 w-3" />
                     <span>Delegation CSV</span>
                   </button>
                   <button
                     onClick={() => handleDownloadCSV('DELEGATION DONE')}
-                    className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl font-semibold text-[10px] text-purple-700 bg-white border border-purple-200 hover:bg-purple-50"
+                    className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl font-semibold text-[10px] text-purple-700 bg-white border border-purple-200 hover:bg-purple-50 cursor-pointer"
                   >
                     <Download className="h-3 w-3" />
                     <span>Done CSV</span>
@@ -1522,13 +2099,13 @@ export default function AdminSettings() {
                 <button
                   onClick={() => handleDumpToSheet('all')}
                   disabled={isDumping}
-                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-xs text-slate-900 bg-white hover:bg-emerald-50 shadow-md transition-all active:scale-95 disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-xs text-slate-900 bg-white hover:bg-emerald-50 shadow-md transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                 >
                   <Zap className={`h-4 w-4 text-emerald-600 ${isDumping ? 'animate-spin' : ''}`} />
                   <span>{isDumping ? 'Dumping in Progress...' : '🚀 Dump All to Google Sheet'}</span>
                 </button>
                 <a
-                  href="https://docs.google.com/spreadsheets/d/1r3YHyjqv24gZXBI9IofAhodnlBuDTA3sgyzU_PNCaQg/edit"
+                  href={targetSheetUrl.startsWith('http') ? targetSheetUrl : `https://docs.google.com/spreadsheets/d/${targetSheetUrl}/edit`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full flex items-center justify-center gap-1 py-1.5 px-3 rounded-xl font-semibold text-[11px] text-white/90 hover:text-white bg-white/10 hover:bg-white/20 transition-colors"
@@ -1946,27 +2523,27 @@ export default function AdminSettings() {
             </div>
 
             {/* Quick Summary Card */}
-            <div className="bg-gradient-to-br from-indigo-900 to-slate-900 text-white rounded-3xl p-6 shadow-xl border border-indigo-800 space-y-4">
-              <div className="flex items-center gap-2 text-indigo-300 text-xs font-bold uppercase tracking-wider">
-                <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                Trigger Engine Rules
+            <div className="rounded-3xl p-6 shadow-xl border border-slate-700/80 space-y-4 text-white" style={{ backgroundColor: '#0f172a' }}>
+              <div className="flex items-center gap-2 text-sky-400 text-xs font-bold uppercase tracking-wider">
+                <ShieldCheck className="h-4.5 w-4.5 text-emerald-400" />
+                <span className="font-extrabold tracking-wide">Trigger Engine Rules</span>
               </div>
-              <div className="space-y-2.5 text-xs text-slate-300">
-                <div className="flex items-start gap-2">
-                  <span className="text-emerald-400 font-bold">✓</span>
-                  <span><strong>Daily:</strong> Evaluates once per working day.</span>
+              <div className="space-y-3 text-xs text-slate-200">
+                <div className="flex items-start gap-2.5">
+                  <span className="text-emerald-400 font-bold text-sm leading-none">✓</span>
+                  <span className="text-slate-200 leading-relaxed"><strong className="text-white font-semibold">Daily:</strong> Evaluates once per working day.</span>
                 </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-emerald-400 font-bold">✓</span>
-                  <span><strong>Weekly:</strong> Triggers 7 days after last date.</span>
+                <div className="flex items-start gap-2.5">
+                  <span className="text-emerald-400 font-bold text-sm leading-none">✓</span>
+                  <span className="text-slate-200 leading-relaxed"><strong className="text-white font-semibold">Weekly:</strong> Triggers 7 days after last date.</span>
                 </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-emerald-400 font-bold">✓</span>
-                  <span><strong>Monthly:</strong> Triggers on the corresponding day next month.</span>
+                <div className="flex items-start gap-2.5">
+                  <span className="text-emerald-400 font-bold text-sm leading-none">✓</span>
+                  <span className="text-slate-200 leading-relaxed"><strong className="text-white font-semibold">Monthly:</strong> Triggers on the corresponding day next month.</span>
                 </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-emerald-400 font-bold">✓</span>
-                  <span><strong>Duplicate Safe:</strong> Automatically updates `Last Date` in `Unique` table to prevent re-inserts.</span>
+                <div className="flex items-start gap-2.5">
+                  <span className="text-emerald-400 font-bold text-sm leading-none">✓</span>
+                  <span className="text-slate-200 leading-relaxed"><strong className="text-white font-semibold">Duplicate Safe:</strong> Automatically updates <code className="text-sky-300 bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">Last Date</code> in <code className="text-sky-300 bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">Unique</code> table to prevent re-inserts.</span>
                 </div>
               </div>
             </div>
@@ -2034,6 +2611,17 @@ export default function AdminSettings() {
                 <option value="DUE">⚡ Due Today</option>
                 <option value="UP_TO_DATE">✅ Up to Date</option>
               </select>
+
+              <button
+                type="button"
+                onClick={loadData}
+                disabled={loading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
+                title="Refresh Templates live from Supabase"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-indigo-600' : 'text-indigo-600'}`} />
+                <span>Refresh Data</span>
+              </button>
             </div>
           </div>
 

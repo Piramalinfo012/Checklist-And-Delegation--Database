@@ -1082,20 +1082,45 @@ export default function AssignTask() {
       if (formData.taskType === "delegation") {
         // Insert into Delegation table with guaranteed unique Task IDs
         const nextId = await getNextTaskId('Delegation');
+        const todayDate = new Date();
+        todayDate.setHours(0, 0, 0, 0);
 
-        const tasksToInsert = generatedTasks.map((t, idx) => ({
-          'Task ID': nextId + idx,
-          Timestamp: currentTimestamp,
-          Department: formData.department,
-          'Given By': formData.givenBy || 'Admin',
-          Name: formData.doer,
-          'Task Description': formData.description,
-          'Task Start Date': t.dueDate.split(' ')[0] || formatDateToDDMMYYYY(date || now),
-          Freq: formData.frequency,
-          'Enable Reminders': formData.enableReminders ? 'Yes' : 'No',
-          'Require Attachment': formData.requireAttachment ? 'Yes' : 'No',
-          Status: 'Pending'
-        }));
+        const tasksToInsert = generatedTasks.map((t, idx) => {
+          const taskStartDate = t.dueDate.split(' ')[0] || formatDateToDDMMYYYY(date || now);
+          
+          let isFuture = false;
+          if (taskStartDate) {
+            const parts = taskStartDate.split('/');
+            if (parts.length === 3) {
+              const startObj = new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+              isFuture = startObj.getTime() > todayDate.getTime();
+            }
+          }
+
+          return {
+            'Task ID': nextId + idx,
+            Timestamp: currentTimestamp,
+            Department: formData.department,
+            'Given By': formData.givenBy || 'Admin',
+            Name: formData.doer,
+            'Task Description': formData.description,
+            'Task Start Date': taskStartDate,
+            Freq: formData.frequency,
+            'Enable Reminders': formData.enableReminders ? 'Yes' : 'No',
+            'Require Attachment': formData.requireAttachment ? 'Yes' : 'No',
+            'Planned Date': taskStartDate,
+            'Actual': null,
+            'Delay': null,
+            'Status': 'Pending',
+            'Remarks': null,
+            'Upload Imgage': null,
+            'Update Date': null,
+            'Color Code For': 1,
+            'Color Code': 'Green',
+            'Admin Done': null,
+            'Filter Condition': isFuture ? 'Planned' : 'Pending'
+          };
+        });
 
         const { error: insErr } = await supabase.from('Delegation').insert(tasksToInsert);
         if (insErr) throw insErr;
