@@ -734,6 +734,11 @@ export default function AdminSettings() {
         setDumpStatusMsg('Reading Checklist records from Supabase...');
         
         const checklistRows = await fetchAllTableRows('Checklist');
+        checklistRows.sort((a, b) => {
+          const idA = parseInt(a['Task ID'] ?? a['Task id'] ?? 0, 10) || 0;
+          const idB = parseInt(b['Task ID'] ?? b['Task id'] ?? 0, 10) || 0;
+          return idA - idB;
+        });
         addDumpLog(`⚡ Fetched ALL ${checklistRows.length.toLocaleString()} total records from Checklist table!`);
         setDumpProgress(20);
 
@@ -817,6 +822,14 @@ export default function AdminSettings() {
           fetchAllTableRows('Delegation'),
           fetchAllTableRows('DELEGATION DONE')
         ]);
+
+        if (delRows && delRows.length > 0) {
+          delRows.sort((a, b) => {
+            const idA = parseInt(a['Task ID'] ?? a['Task id'] ?? 0, 10) || 0;
+            const idB = parseInt(b['Task ID'] ?? b['Task id'] ?? 0, 10) || 0;
+            return idA - idB;
+          });
+        }
 
         const delHeaders = [
           'Timestamp', 'Task ID', 'Department', 'Given By', 'Name', 'Task Description',
