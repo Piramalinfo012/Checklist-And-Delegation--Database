@@ -977,6 +977,12 @@ export default function AdminSettings() {
                 break;
               }
             }
+            if (!col19_adminDone && r['Admin Done']) {
+              const rowAd = String(r['Admin Done']).trim().toLowerCase();
+              if (rowAd === 'done') {
+                col19_adminDone = 'Done';
+              }
+            }
 
             let col20_filterCondition = '';
             if (!taskIdStr) {

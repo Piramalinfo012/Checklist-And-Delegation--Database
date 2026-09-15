@@ -798,6 +798,12 @@ function DelegationDataPage() {
               break;
             }
           }
+          if (!col19_adminDone && row['Admin Done']) {
+            const rowAd = String(row['Admin Done']).trim().toLowerCase();
+            if (rowAd === 'done') {
+              col19_adminDone = "Done";
+            }
+          }
 
           // Filter Condition (Col U / col20):
           // IF(B=="","", IF(L=="", IF((K<>"")*(K>TODAY()), "Planned", "Pending"), IF(T=="", "Verify Pending", "Done")))
@@ -1329,17 +1335,19 @@ function DelegationDataPage() {
               .update({ 'Admin Done': 'Done' })
               .eq('id', historyItem._dbId)
           );
-        } else if (historyItem.col1) {
+        }
+
+        const rawTaskId = historyItem.col1 || historyItem['Task id'] || historyItem['Task ID'];
+        const numTaskId = parseInt(rawTaskId, 10);
+
+        if (rawTaskId) {
           updates.push(
             supabase
               .from('DELEGATION DONE')
               .update({ 'Admin Done': 'Done' })
-              .eq('Task id', historyItem.col1)
+              .eq('Task id', numTaskId || rawTaskId)
           );
-        }
 
-        const rawTaskId = historyItem.col1 || historyItem['Task id'] || historyItem['Task ID'];
-        if (rawTaskId) {
           updates.push(
             supabase
               .from('Delegation')
@@ -1347,7 +1355,7 @@ function DelegationDataPage() {
                 'Admin Done': 'Done',
                 'Filter Condition': 'Done'
               })
-              .eq('Task ID', rawTaskId)
+              .eq('Task ID', numTaskId || rawTaskId)
           );
         }
       }
