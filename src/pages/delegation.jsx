@@ -1114,6 +1114,12 @@ function DelegationDataPage() {
         const currentSelectedStatus = statusData[id] || 'Done';
         const rawTaskId = parseInt(item['col1'] || '0', 10) || item['col1'];
 
+        const activeRole = userRole || sessionStorage.getItem("role") || "";
+        const isAdmin = activeRole.toLowerCase() === "admin";
+        const isVerifyPendingItem = (item['col20'] === 'Verify Pending');
+        const adminDoneVal = (isAdmin || isVerifyPendingItem) && currentSelectedStatus === 'Done' ? 'Done' : null;
+        const filterCondVal = (isAdmin || isVerifyPendingItem) && currentSelectedStatus === 'Done' ? 'Done' : 'Verify Pending';
+
         rowsToInsert.push({
           Timestamp: currentTimestamp,
           'Task id': rawTaskId,
@@ -1125,7 +1131,7 @@ function DelegationDataPage() {
           Name: username || item['col4'] || '',
           'Task Description': item['col5'] || '',
           'Given By': item['col3'] || 'Admin',
-          'Admin Done': null
+          'Admin Done': adminDoneVal
         });
 
         // Compute direct Supabase Delegation table columns update
@@ -1140,14 +1146,23 @@ function DelegationDataPage() {
 
             delegationUpdates.push(
               supabase.from('Delegation').update({
-                'Actual': currentTimestamp,
+                'Actual': item['col11'] || currentTimestamp,
                 'Status': 'Done',
-                'Remarks': remarksData[id] || '',
+                'Remarks': remarksData[id] || item['col14'] || '',
                 'Upload Imgage': imageUrl || item['col15'] || '',
                 'Delay': computedDelay,
-                'Filter Condition': 'Verify Pending'
+                'Admin Done': adminDoneVal,
+                'Filter Condition': filterCondVal
               }).eq('Task ID', rawTaskId)
             );
+
+            if (adminDoneVal === 'Done') {
+              delegationUpdates.push(
+                supabase.from('DELEGATION DONE').update({
+                  'Admin Done': 'Done'
+                }).eq('Task id', rawTaskId)
+              );
+            }
           } else if (currentSelectedStatus === 'Extend date') {
             const nextDateObj = parseToDateObject(formattedNextDate);
             const isFuture = nextDateObj && nextDateObj.getTime() > today.getTime();
@@ -1170,6 +1185,7 @@ function DelegationDataPage() {
                 'Color Code For': newCount,
                 'Color Code': newColor,
                 'Delay': computedDelay,
+                'Admin Done': null,
                 'Filter Condition': isFuture ? 'Planned' : 'Pending'
               }).eq('Task ID', rawTaskId)
             );
