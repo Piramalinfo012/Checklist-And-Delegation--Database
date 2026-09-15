@@ -213,21 +213,36 @@ function DelegationDataPage() {
     (dateStr) => {
       if (!dateStr) return "";
 
-      if (
-        typeof dateStr === "string" &&
-        dateStr.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)
-      ) {
-        const parts = dateStr.split("/");
-        if (parts.length === 3) {
-          const day = parts[0].padStart(2, "0");
-          const month = parts[1].padStart(2, "0");
-          const year = parts[2];
-          return `${day}/${month}/${year}`;
-        }
-        return dateStr;
+      if (dateStr instanceof Date && !isNaN(dateStr.getTime())) {
+        return formatDateToDDMMYYYY(dateStr);
       }
 
-      if (typeof dateStr === "string" && dateStr.startsWith("Date(")) {
+      if (typeof dateStr !== "string") {
+        dateStr = String(dateStr);
+      }
+      dateStr = dateStr.trim();
+      if (!dateStr) return "";
+
+      // Check DD/MM/YYYY or D/M/YYYY or DD-MM-YYYY (with or without time like ", 12:38:12 pm")
+      const dmyMatch = dateStr.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
+      if (dmyMatch) {
+        const day = dmyMatch[1].padStart(2, "0");
+        const month = dmyMatch[2].padStart(2, "0");
+        const year = dmyMatch[3];
+        return `${day}/${month}/${year}`;
+      }
+
+      // Check YYYY-MM-DD (with or without time like "T12:38:12")
+      const ymdMatch = dateStr.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/);
+      if (ymdMatch) {
+        const year = ymdMatch[1];
+        const month = ymdMatch[2].padStart(2, "0");
+        const day = ymdMatch[3].padStart(2, "0");
+        return `${day}/${month}/${year}`;
+      }
+
+      // Google Sheets Date(year,month,day)
+      if (dateStr.startsWith("Date(")) {
         const match = /Date\((\d+),(\d+),(\d+)\)/.exec(dateStr);
         if (match) {
           const year = Number.parseInt(match[1], 10);
@@ -256,15 +271,8 @@ function DelegationDataPage() {
   const formatDateForDisplay = useCallback(
     (dateStr) => {
       if (!dateStr) return "—";
-
-      if (
-        typeof dateStr === "string" &&
-        dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)
-      ) {
-        return dateStr;
-      }
-
-      return parseGoogleSheetsDate(dateStr) || "—";
+      const formatted = parseGoogleSheetsDate(dateStr);
+      return formatted || "—";
     },
     [parseGoogleSheetsDate]
   );
@@ -714,45 +722,73 @@ function DelegationDataPage() {
           // Latest record from DELEGATION DONE
           const latestDoneRecord = taskDoneList.length > 0 ? taskDoneList[taskDoneList.length - 1] : null;
 
-          // Update Date (Col Q / col16): Latest "Next extend date"
-          let latestExtendDate = "";
-          for (let k = taskDoneList.length - 1; k >= 0; k--) {
-            if (taskDoneList[k]['Next extend date']) {
-              latestExtendDate = taskDoneList[k]['Next extend date'];
-              break;
+          // Update Date (Col Q / col16): Latest "Next extend date" (SORT DELEGATION DONE by Next extend date descending)
+          let maxExtendDateObj = null;
+          let maxExtendDateStr = "";
+
+          taskDoneList.forEach((doneItem) => {
+            const rawExt = doneItem['Next extend date'];
+            if (rawExt) {
+              const dObj = parseToDateObject(rawExt);
+              if (dObj) {
+                if (!maxExtendDateObj || dObj.getTime() > maxExtendDateObj.getTime()) {
+                  maxExtendDateObj = dObj;
+                  maxExtendDateStr = formatDateToDDMMYYYY(dObj);
+                }
+              } else if (!maxExtendDateStr) {
+                maxExtendDateStr = rawExt;
+              }
+            }
+          });
+
+          if (row['Update Date']) {
+            const dObj = parseToDateObject(row['Update Date']);
+            if (dObj) {
+              if (!maxExtendDateObj || dObj.getTime() > maxExtendDateObj.getTime()) {
+                maxExtendDateObj = dObj;
+                maxExtendDateStr = formatDateToDDMMYYYY(dObj);
+              }
+            } else if (!maxExtendDateStr) {
+              maxExtendDateStr = row['Update Date'];
             }
           }
-          const col16_updateDate = latestExtendDate || row['Update Date'] || "";
 
-          // Planned Date (Col K / col10): IF((G="")*(Q=""), "", IF(G>Q, G, Q))
+          const col16_updateDate = maxExtendDateStr || "";
+
+          // Planned Date (Col K / col10): =ARRAYFORMULA(TO_DATE(IF((G2:G="")*(Q2:Q=""), "", IF(G2:G>Q2:Q, G2:G, Q2:Q))))
           const rawStartDate = row['Task Start Date'] || "";
+          const gDate = parseToDateObject(rawStartDate);
+          const qDate = parseToDateObject(col16_updateDate);
+
           let col10_plannedDate = "";
-          if (!rawStartDate && !col16_updateDate) {
-            col10_plannedDate = "";
-          } else if (rawStartDate && !col16_updateDate) {
-            col10_plannedDate = rawStartDate;
-          } else if (!rawStartDate && col16_updateDate) {
-            col10_plannedDate = col16_updateDate;
+          if (gDate && qDate) {
+            col10_plannedDate = gDate.getTime() > qDate.getTime() ? formatDateToDDMMYYYY(gDate) : formatDateToDDMMYYYY(qDate);
+          } else if (qDate) {
+            col10_plannedDate = formatDateToDDMMYYYY(qDate);
+          } else if (gDate) {
+            col10_plannedDate = formatDateToDDMMYYYY(gDate);
           } else {
-            const gDate = parseToDateObject(rawStartDate);
-            const qDate = parseToDateObject(col16_updateDate);
-            if (gDate && qDate) {
-              col10_plannedDate = gDate > qDate ? rawStartDate : col16_updateDate;
-            } else {
-              col10_plannedDate = col16_updateDate || rawStartDate;
-            }
+            col10_plannedDate = col16_updateDate || rawStartDate || "";
           }
 
           // Actual (Col L / col11): VLOOKUP(B&"Done", {'DELEGATION DONE'!B:B & 'DELEGATION DONE'!C:C, 'DELEGATION DONE'!A:A})
-          let doneRecordWithDoneStatus = null;
-          for (let k = taskDoneList.length - 1; k >= 0; k--) {
-            const st = String(taskDoneList[k]['Status'] || '').trim().toLowerCase();
-            if (st === 'done') {
-              doneRecordWithDoneStatus = taskDoneList[k];
-              break;
+          // If the latest status is 'Extend date', Actual is blank so task returns to Pending/Planned
+          let col11_actual = "";
+          if (latestDoneRecord) {
+            const latestSt = String(latestDoneRecord['Status'] || '').trim().toLowerCase();
+            if (latestSt === 'done') {
+              col11_actual = latestDoneRecord['Timestamp'] || "";
+            } else {
+              col11_actual = "";
+            }
+          } else {
+            const rowSt = String(row['Status'] || '').trim().toLowerCase();
+            if (rowSt === 'done') {
+              col11_actual = row['Actual'] || "";
+            } else {
+              col11_actual = "";
             }
           }
-          const col11_actual = doneRecordWithDoneStatus ? (doneRecordWithDoneStatus['Timestamp'] || "") : (row['Actual'] || "");
 
           // Delay (Col M / col12): if(K, if(L<>"", if(L>K, L-K, ""), NOW()-K), "")
           let col12_delay = "";
@@ -774,6 +810,7 @@ function DelegationDataPage() {
           }
 
           // Status (Col N / col13): Latest Status from DELEGATION DONE
+          // =BYROW(B1:B, LAMBDA(b, IFNA(INDEX('DELEGATION DONE'!B:F, MAX(FILTER(ROW('DELEGATION DONE'!B:B), 'DELEGATION DONE'!B:B = b)), 2))))
           const col13_status = latestDoneRecord ? (latestDoneRecord['Status'] || "") : (row['Status'] || "");
 
           // Remarks (Col O / col14): Latest Reason from DELEGATION DONE
@@ -781,26 +818,24 @@ function DelegationDataPage() {
 
           // Upload Image (Col P / col15): Latest Upload Image
           let col15_uploadImage = "";
-          if (doneRecordWithDoneStatus && doneRecordWithDoneStatus['Upload Image']) {
-            col15_uploadImage = doneRecordWithDoneStatus['Upload Image'];
-          } else if (latestDoneRecord && latestDoneRecord['Upload Image']) {
+          if (latestDoneRecord && latestDoneRecord['Upload Image']) {
             col15_uploadImage = latestDoneRecord['Upload Image'];
           } else {
             col15_uploadImage = row['Upload Imgage'] || row['Upload Image'] || "";
           }
 
-          // Admin Done (Col T / col19): VLOOKUP(B, {'DELEGATION DONE'!B:B, 'DELEGATION DONE'!P:P})
+          // Admin Done (Col T / col19):
           let col19_adminDone = "";
-          for (let k = taskDoneList.length - 1; k >= 0; k--) {
-            const ad = String(taskDoneList[k]['Admin Done'] || '').trim().toLowerCase();
-            if (ad === 'done') {
+          if (latestDoneRecord) {
+            const ad = String(latestDoneRecord['Admin Done'] || '').trim().toLowerCase();
+            const latestSt = String(latestDoneRecord['Status'] || '').trim().toLowerCase();
+            if (ad === 'done' && latestSt === 'done') {
               col19_adminDone = "Done";
-              break;
             }
-          }
-          if (!col19_adminDone && row['Admin Done']) {
+          } else if (row['Admin Done']) {
             const rowAd = String(row['Admin Done']).trim().toLowerCase();
-            if (rowAd === 'done') {
+            const rowSt = String(row['Status'] || '').trim().toLowerCase();
+            if (rowAd === 'done' && rowSt === 'done') {
               col19_adminDone = "Done";
             }
           }
@@ -1101,12 +1136,36 @@ function DelegationDataPage() {
 
         let formattedNextDate = "";
         if (nextTargetDate[id]) {
-          const d = new Date(nextTargetDate[id]);
-          if (!isNaN(d.getTime())) {
-            const day = String(d.getDate()).padStart(2, '0');
-            const month = String(d.getMonth() + 1).padStart(2, '0');
-            const year = d.getFullYear();
-            formattedNextDate = `${day}/${month}/${year}`;
+          const rawVal = String(nextTargetDate[id]).trim();
+          if (rawVal.includes("/")) {
+            const parts = rawVal.split("/");
+            if (parts.length === 3) {
+              if (parts[0].length === 4) {
+                formattedNextDate = `${parts[2].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[0]}`;
+              } else {
+                formattedNextDate = `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[2]}`;
+              }
+            } else {
+              formattedNextDate = rawVal;
+            }
+          } else if (rawVal.includes("-")) {
+            const parts = rawVal.split("-");
+            if (parts.length === 3) {
+              if (parts[0].length === 4) {
+                formattedNextDate = `${parts[2].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[0]}`;
+              } else {
+                formattedNextDate = `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[2]}`;
+              }
+            } else {
+              formattedNextDate = rawVal;
+            }
+          } else {
+            const d = parseToDateObject(rawVal);
+            if (d && !isNaN(d.getTime())) {
+              formattedNextDate = formatDateToDDMMYYYY(d);
+            } else {
+              formattedNextDate = rawVal;
+            }
           }
         }
 
@@ -1177,6 +1236,7 @@ function DelegationDataPage() {
 
             delegationUpdates.push(
               supabase.from('Delegation').update({
+                'Actual': null,
                 'Update Date': formattedNextDate,
                 'Planned Date': formattedNextDate,
                 'Status': 'Extend date',
@@ -1984,6 +2044,9 @@ function DelegationDataPage() {
                           Status
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Task Start Date
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Task ID
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -2074,6 +2137,11 @@ function DelegationDataPage() {
                                 >
                                   {account["col20"] || "—"}
                                 </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm text-gray-900">
+                                  {formatDateForDisplay(account["col0"])}
+                                </div>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm text-gray-900">

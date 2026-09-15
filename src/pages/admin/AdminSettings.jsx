@@ -894,44 +894,73 @@ export default function AdminSettings() {
             const latestDoneRecord =
               taskDoneList.length > 0 ? taskDoneList[taskDoneList.length - 1] : null;
 
-            let latestExtendDate = '';
-            for (let k = taskDoneList.length - 1; k >= 0; k--) {
-              if (taskDoneList[k]['Next extend date']) {
-                latestExtendDate = taskDoneList[k]['Next extend date'];
-                break;
+            // Update Date (Col Q / col16): Latest "Next extend date"
+            let maxExtendDateObj = null;
+            let maxExtendDateStr = '';
+
+            taskDoneList.forEach((doneItem) => {
+              const rawExt = doneItem['Next extend date'];
+              if (rawExt) {
+                const dObj = parseDumpDate(rawExt);
+                if (dObj) {
+                  if (!maxExtendDateObj || dObj.getTime() > maxExtendDateObj.getTime()) {
+                    maxExtendDateObj = dObj;
+                    maxExtendDateStr = dObj.toLocaleDateString('en-GB'); // DD/MM/YYYY
+                  }
+                } else if (!maxExtendDateStr) {
+                  maxExtendDateStr = rawExt;
+                }
+              }
+            });
+
+            if (r['Update Date']) {
+              const dObj = parseDumpDate(r['Update Date']);
+              if (dObj) {
+                if (!maxExtendDateObj || dObj.getTime() > maxExtendDateObj.getTime()) {
+                  maxExtendDateObj = dObj;
+                  maxExtendDateStr = dObj.toLocaleDateString('en-GB');
+                }
+              } else if (!maxExtendDateStr) {
+                maxExtendDateStr = r['Update Date'];
               }
             }
-            const col16_updateDate = latestExtendDate || r['Update Date'] || '';
 
+            const col16_updateDate = maxExtendDateStr || '';
+
+            // Planned Date (Col K / col10): IF((G="")*(Q=""), "", IF(G>Q, G, Q))
             const rawStartDate = r['Task Start Date'] || '';
+            const gDate = parseDumpDate(rawStartDate);
+            const qDate = parseDumpDate(col16_updateDate);
+
             let col10_plannedDate = '';
-            if (!rawStartDate && !col16_updateDate) {
-              col10_plannedDate = '';
-            } else if (rawStartDate && !col16_updateDate) {
-              col10_plannedDate = rawStartDate;
-            } else if (!rawStartDate && col16_updateDate) {
+            if (gDate && qDate) {
+              col10_plannedDate = gDate.getTime() > qDate.getTime() ? (r['Task Start Date'] || '') : col16_updateDate;
+            } else if (qDate) {
               col10_plannedDate = col16_updateDate;
+            } else if (gDate) {
+              col10_plannedDate = rawStartDate;
             } else {
-              const gDate = parseDumpDate(rawStartDate);
-              const qDate = parseDumpDate(col16_updateDate);
-              if (gDate && qDate) {
-                col10_plannedDate = gDate > qDate ? rawStartDate : col16_updateDate;
-              } else {
-                col10_plannedDate = col16_updateDate || rawStartDate;
-              }
+              col10_plannedDate = col16_updateDate || rawStartDate || '';
             }
 
-            let doneRecordWithDoneStatus = null;
-            for (let k = taskDoneList.length - 1; k >= 0; k--) {
-              const st = String(taskDoneList[k]['Status'] || '').trim().toLowerCase();
-              if (st === 'done') {
-                doneRecordWithDoneStatus = taskDoneList[k];
-                break;
+            // Actual (Col L / col11): VLOOKUP(B&"Done", {'DELEGATION DONE'!B:B & 'DELEGATION DONE'!C:C, 'DELEGATION DONE'!A:A})
+            // If the latest status is 'Extend date', Actual is blank so task returns to Pending/Planned
+            let col11_actual = '';
+            if (latestDoneRecord) {
+              const latestSt = String(latestDoneRecord['Status'] || '').trim().toLowerCase();
+              if (latestSt === 'done') {
+                col11_actual = latestDoneRecord['Timestamp'] || '';
+              } else {
+                col11_actual = '';
+              }
+            } else {
+              const rowSt = String(r['Status'] || '').trim().toLowerCase();
+              if (rowSt === 'done') {
+                col11_actual = r['Actual'] || '';
+              } else {
+                col11_actual = '';
               }
             }
-            const col11_actual = doneRecordWithDoneStatus
-              ? doneRecordWithDoneStatus['Timestamp'] || ''
-              : r['Actual'] || '';
 
             let col12_delay = '';
             const plannedDateObj = parseDumpDate(col10_plannedDate);
@@ -953,6 +982,7 @@ export default function AdminSettings() {
               }
             }
 
+            // Status (Col N / col13): Latest Status from DELEGATION DONE
             const col13_status = latestDoneRecord
               ? latestDoneRecord['Status'] || ''
               : r['Status'] || '';
@@ -961,25 +991,24 @@ export default function AdminSettings() {
               : r['Remarks'] || '';
 
             let col15_uploadImage = '';
-            if (doneRecordWithDoneStatus && doneRecordWithDoneStatus['Upload Image']) {
-              col15_uploadImage = doneRecordWithDoneStatus['Upload Image'];
-            } else if (latestDoneRecord && latestDoneRecord['Upload Image']) {
+            if (latestDoneRecord && latestDoneRecord['Upload Image']) {
               col15_uploadImage = latestDoneRecord['Upload Image'];
             } else {
               col15_uploadImage = r['Upload Imgage'] || r['Upload Image'] || '';
             }
 
+            // Admin Done (Col T / col19):
             let col19_adminDone = '';
-            for (let k = taskDoneList.length - 1; k >= 0; k--) {
-              const ad = String(taskDoneList[k]['Admin Done'] || '').trim().toLowerCase();
-              if (ad === 'done') {
+            if (latestDoneRecord) {
+              const ad = String(latestDoneRecord['Admin Done'] || '').trim().toLowerCase();
+              const latestSt = String(latestDoneRecord['Status'] || '').trim().toLowerCase();
+              if (ad === 'done' && latestSt === 'done') {
                 col19_adminDone = 'Done';
-                break;
               }
-            }
-            if (!col19_adminDone && r['Admin Done']) {
+            } else if (r['Admin Done']) {
               const rowAd = String(r['Admin Done']).trim().toLowerCase();
-              if (rowAd === 'done') {
+              const rowSt = String(r['Status'] || '').trim().toLowerCase();
+              if (rowAd === 'done' && rowSt === 'done') {
                 col19_adminDone = 'Done';
               }
             }
