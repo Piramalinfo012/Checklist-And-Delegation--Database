@@ -8,7 +8,7 @@ import {
   Download, UploadCloud, FileSpreadsheet, Database, ArrowDownToLine, Check,
   FileText, ExternalLink, UserPlus, Users, Key, Lock, Phone, Mail,
   UserCheck, UserX, Trash2, Edit3, Shield, Building2, User, X, Camera, Moon,
-  ArrowUpDown, ArrowUp, ArrowDown
+  ArrowUpDown, ArrowUp, ArrowDown, Save
 } from 'lucide-react';
 import AdminLayout from '../../components/layout/AdminLayout';
 import { supabase } from '../../lib/supabaseClient';
@@ -26,7 +26,7 @@ const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyAy98t3XAyRP3p
 const TIMING_OPTIONS = [
   { value: '0', label: '12:00 AM (Midnight)' },
   { value: '1', label: '01:00 AM' },
-  { value: '2', label: '02:00 AM' },
+  { value: '2', label: '02:00 AM (Default Nightly Auto-Run)' },
   { value: '3', label: '03:00 AM' },
   { value: '4', label: '04:00 AM' },
   { value: '5', label: '05:00 AM' },
@@ -34,7 +34,7 @@ const TIMING_OPTIONS = [
   { value: '7', label: '07:00 AM' },
   { value: '8', label: '08:00 AM' },
   { value: '9', label: '09:00 AM' },
-  { value: '9:40', label: '09:40 AM (Auto Scheduled Time)' },
+  { value: '9:40', label: '09:40 AM' },
   { value: '10', label: '10:00 AM' },
   { value: '11', label: '11:00 AM' },
   { value: '12', label: '12:00 PM (Noon)' },
@@ -52,7 +52,7 @@ const TIMING_OPTIONS = [
 ];
 
 export const formatHourLabel = (h) => {
-  if (!h && h !== 0) return '09:40 AM IST';
+  if (!h && h !== 0) return '02:00 AM IST';
   const str = String(h).trim();
   if (str.includes(':')) {
     const parts = str.split(':');
@@ -63,7 +63,7 @@ export const formatHourLabel = (h) => {
     return `${String(display).padStart(2, '0')}:${String(min).padStart(2, '0')} ${ampm} IST`;
   }
   const num = parseInt(str, 10);
-  if (isNaN(num)) return '09:40 AM IST';
+  if (isNaN(num)) return '02:00 AM IST';
   const ampm = num >= 12 ? 'PM' : 'AM';
   const display = num % 12 === 0 ? 12 : num % 12;
   return `${String(display).padStart(2, '0')}:00 ${ampm} IST`;
@@ -81,10 +81,10 @@ export default function AdminSettings() {
   
   // Nightly Cloud Trigger State & Timing Configuration
   const [nightlyTriggerHour, setNightlyTriggerHour] = useState(() => {
-    return localStorage.getItem('nightly_trigger_hour') || '9:40';
+    return localStorage.getItem('nightly_trigger_hour') || '2';
   });
   const [selectedTimingHour, setSelectedTimingHour] = useState(() => {
-    return localStorage.getItem('nightly_trigger_hour') || '9:40';
+    return localStorage.getItem('nightly_trigger_hour') || '2';
   });
   const [countdown, setCountdown] = useState({
     hours: '00',
@@ -156,6 +156,7 @@ export default function AdminSettings() {
     return localStorage.getItem('dump_target_sheet_url') || 'https://docs.google.com/spreadsheets/d/1r3YHyjqv24gZXBI9IofAhodnlBuDTA3sgyzU_PNCaQg/edit';
   });
   const [isUrlSaved, setIsUrlSaved] = useState(false);
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
 
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [connectionTestResult, setConnectionTestResult] = useState(null);
@@ -182,6 +183,32 @@ export default function AdminSettings() {
     localStorage.setItem('dump_target_sheet_url', val);
     setIsUrlSaved(true);
     setTimeout(() => setIsUrlSaved(false), 2500);
+  };
+
+  const handleSaveSheetConfig = () => {
+    const cleanScript = (appsScriptUrl || '').trim();
+    const cleanSheet = (targetSheetUrl || '').trim();
+
+    if (!cleanScript) {
+      alert('Kripya Google Apps Script Web App URL daalein!');
+      return;
+    }
+    if (!cleanSheet) {
+      alert('Kripya Target Google Sheet URL ya Sheet ID daalein!');
+      return;
+    }
+
+    localStorage.setItem('dump_apps_script_url', cleanScript);
+    localStorage.setItem('dump_target_sheet_url', cleanSheet);
+
+    setIsAppsScriptSaved(true);
+    setIsUrlSaved(true);
+    setSaveSuccessMsg('✅ Google Sheet aur Script URL successfully save ho gaya hai! Ab se data hamesha isi sheet me dump hoga.');
+    setTimeout(() => {
+      setIsAppsScriptSaved(false);
+      setIsUrlSaved(false);
+      setSaveSuccessMsg('');
+    }, 4500);
   };
 
   // Table Filters & Sorting for Unique Templates
@@ -229,16 +256,16 @@ export default function AdminSettings() {
   useEffect(() => {
     const calculateCountdown = () => {
       const now = new Date();
-      let targetHour = 9;
-      let targetMin = 30;
+      let targetHour = 2;
+      let targetMin = 0;
 
-      const triggerStr = String(nightlyTriggerHour || '9:30').trim();
+      const triggerStr = String(nightlyTriggerHour || '2').trim();
       if (triggerStr.includes(':')) {
         const parts = triggerStr.split(':');
         targetHour = parseInt(parts[0], 10) || 0;
         targetMin = parseInt(parts[1], 10) || 0;
       } else {
-        targetHour = parseInt(triggerStr, 10) || 9;
+        targetHour = parseInt(triggerStr, 10) || 2;
         targetMin = 0;
       }
       
@@ -290,33 +317,40 @@ export default function AdminSettings() {
   // Setup / Update Scheduled Cloud Trigger on Google Apps Script
   const handleSetupNightlyTrigger = async (customTiming) => {
     const timingToSet = customTiming !== undefined ? customTiming : selectedTimingHour;
+    
+    // Save locally immediately so UI and refreshes always retain the configured time
+    localStorage.setItem('nightly_trigger_hour', String(timingToSet));
+    setNightlyTriggerHour(String(timingToSet));
+    setSelectedTimingHour(String(timingToSet));
+
     setIsSettingUpNightlyTrigger(true);
     setNightlyTriggerStatus('');
     try {
-      let hour = 9;
-      let minute = 30;
+      let hour = 2;
+      let minute = 0;
       const tStr = String(timingToSet).trim();
       if (tStr.includes(':')) {
         const parts = tStr.split(':');
         hour = parseInt(parts[0], 10) || 0;
         minute = parseInt(parts[1], 10) || 0;
       } else {
-        hour = parseInt(tStr, 10) || 9;
+        hour = parseInt(tStr, 10) || 2;
         minute = 0;
       }
 
+      const activeScriptUrl = (appsScriptUrl || APPS_SCRIPT_URL).trim();
       const formData = new FormData();
       formData.append('action', 'setupNightlyTrigger');
       formData.append('hour', String(hour));
       formData.append('minute', String(minute));
-      const res = await fetch(APPS_SCRIPT_URL, { method: 'POST', body: formData });
+      const res = await fetch(activeScriptUrl, { method: 'POST', body: formData });
       const json = await res.json();
       if (json.success) {
         localStorage.setItem('nightly_trigger_hour', String(timingToSet));
         setNightlyTriggerHour(String(timingToSet));
         setSelectedTimingHour(String(timingToSet));
         setNightlyTriggerStatus(`✅ Cloud Trigger active daily at ${formatHourLabel(timingToSet)}!`);
-        alert(`⏰ SUCCESS: Automated Task Generator Trigger is configured in Google Apps Script! Every day at ${formatHourLabel(timingToSet)}, upcoming tasks will generate automatically.`);
+        alert(`⏰ SUCCESS: Trigger timing ${formatHourLabel(timingToSet)} set ho gayi hai! Har din ${formatHourLabel(timingToSet)} par tasks automatically trigger honge.`);
       } else {
         throw new Error(json.error || 'Failed to setup trigger');
       }
@@ -326,7 +360,7 @@ export default function AdminSettings() {
       localStorage.setItem('nightly_trigger_hour', String(timingToSet));
       setNightlyTriggerHour(String(timingToSet));
       setSelectedTimingHour(String(timingToSet));
-      setNightlyTriggerStatus(`✅ Trigger configured for ${formatHourLabel(timingToSet)}`);
+      setNightlyTriggerStatus(`✅ Trigger timing saved for ${formatHourLabel(timingToSet)}!`);
     } finally {
       setIsSettingUpNightlyTrigger(false);
     }
@@ -755,6 +789,10 @@ export default function AdminSettings() {
       alert('Please enter or paste a valid Google Sheet URL / ID in the Target Google Sheet field!');
       return;
     }
+
+    // Persist configuration permanently
+    localStorage.setItem('dump_apps_script_url', currentScriptUrl);
+    localStorage.setItem('dump_target_sheet_url', targetSheetUrl);
 
     setIsDumping(true);
     setDumpProgress(5);
@@ -2021,31 +2059,50 @@ export default function AdminSettings() {
               </p>
             </div>
 
-            {/* Test Connection Button & Status Output */}
+            {/* Action Buttons: Save Configuration & Test Connection */}
             <div className="pt-3 border-t border-indigo-100/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={handleTestConnection}
-                disabled={isTestingConnection || !targetSheetUrl || !appsScriptUrl}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-indigo-500/20 active:scale-95 cursor-pointer"
-              >
-                {isTestingConnection ? (
-                  <>
-                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                    <span>Testing Connection...</span>
-                  </>
-                ) : (
-                  <>
-                    <Zap className="h-3.5 w-3.5" />
-                    <span>Test Connection (Verify Sheet &amp; Script)</span>
-                  </>
-                )}
-              </button>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleSaveSheetConfig}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-500/20 active:scale-95 cursor-pointer"
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  <span>Save Configuration (Permanent)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleTestConnection}
+                  disabled={isTestingConnection || !targetSheetUrl || !appsScriptUrl}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-indigo-500/20 active:scale-95 cursor-pointer"
+                >
+                  {isTestingConnection ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      <span>Testing Connection...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="h-3.5 w-3.5" />
+                      <span>Test Connection (Verify Sheet &amp; Script)</span>
+                    </>
+                  )}
+                </button>
+              </div>
 
               <span className="text-[11px] text-slate-500 italic">
-                * Test Connection click karke check karein ki Script aur Sheet connect ho rahe hain ya nahi.
+                * Ek baar <strong>Save Configuration</strong> kar denge to aage se hamesha isi Sheet me data dump hoga.
               </span>
             </div>
+
+            {/* Save Success Banner */}
+            {saveSuccessMsg && (
+              <div className="p-3.5 rounded-xl border bg-emerald-50 border-emerald-300 text-emerald-900 text-xs flex items-center gap-2.5 animate-in fade-in shadow-sm">
+                <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span className="font-semibold">{saveSuccessMsg}</span>
+              </div>
+            )}
 
             {/* Test Connection Result Card */}
             {connectionTestResult && (
@@ -2329,7 +2386,12 @@ export default function AdminSettings() {
                   <div className="flex items-center gap-2 w-full sm:w-auto">
                     <select
                       value={selectedTimingHour}
-                      onChange={(e) => setSelectedTimingHour(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedTimingHour(val);
+                        setNightlyTriggerHour(val);
+                        localStorage.setItem('nightly_trigger_hour', String(val));
+                      }}
                       className="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-medium text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto"
                     >
                       {TIMING_OPTIONS.map((opt) => (

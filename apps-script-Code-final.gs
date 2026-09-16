@@ -409,8 +409,8 @@ function doPost(e) {
     }
 
     if (params.action === 'setupNightlyTrigger' || params.action === 'setupDailyTrigger') {
-      var hour = params.hour !== undefined ? parseInt(params.hour, 10) : 9;
-      var minute = params.minute !== undefined ? parseInt(params.minute, 10) : 40;
+      var hour = params.hour !== undefined ? parseInt(params.hour, 10) : 2;
+      var minute = params.minute !== undefined ? parseInt(params.minute, 10) : 0;
       var triggerRes = setupDailyTrigger(hour, minute);
       return ContentService.createTextOutput(JSON.stringify(triggerRes))
         .setMimeType(ContentService.MimeType.JSON);
@@ -902,8 +902,8 @@ var SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 
 function setupDailyTrigger(hour, minute) {
   try {
-    var targetHour = (hour !== undefined && !isNaN(hour)) ? Math.max(0, Math.min(23, parseInt(hour, 10))) : 9;
-    var targetMinute = (minute !== undefined && !isNaN(minute)) ? parseInt(minute, 10) : 40;
+    var targetHour = (hour !== undefined && !isNaN(hour)) ? Math.max(0, Math.min(23, parseInt(hour, 10))) : 2;
+    var targetMinute = (minute !== undefined && !isNaN(minute)) ? parseInt(minute, 10) : 0;
     
     // Choose nearest valid minute (0, 15, 30, 45) for ScriptApp nearMinute
     var validNearMinutes = [0, 15, 30, 45];
