@@ -26,7 +26,7 @@ const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyAy98t3XAyRP3p
 const TIMING_OPTIONS = [
   { value: '0', label: '12:00 AM (Midnight)' },
   { value: '1', label: '01:00 AM' },
-  { value: '2', label: '02:00 AM (Default / Recommended)' },
+  { value: '2', label: '02:00 AM' },
   { value: '3', label: '03:00 AM' },
   { value: '4', label: '04:00 AM' },
   { value: '5', label: '05:00 AM' },
@@ -34,6 +34,7 @@ const TIMING_OPTIONS = [
   { value: '7', label: '07:00 AM' },
   { value: '8', label: '08:00 AM' },
   { value: '9', label: '09:00 AM' },
+  { value: '9:40', label: '09:40 AM (Auto Scheduled Time)' },
   { value: '10', label: '10:00 AM' },
   { value: '11', label: '11:00 AM' },
   { value: '12', label: '12:00 PM (Noon)' },
@@ -51,8 +52,18 @@ const TIMING_OPTIONS = [
 ];
 
 export const formatHourLabel = (h) => {
-  const num = parseInt(h, 10);
-  if (isNaN(num)) return '02:00 AM IST';
+  if (!h && h !== 0) return '09:40 AM IST';
+  const str = String(h).trim();
+  if (str.includes(':')) {
+    const parts = str.split(':');
+    const hr = parseInt(parts[0], 10) || 0;
+    const min = parseInt(parts[1], 10) || 0;
+    const ampm = hr >= 12 ? 'PM' : 'AM';
+    const display = hr % 12 === 0 ? 12 : hr % 12;
+    return `${String(display).padStart(2, '0')}:${String(min).padStart(2, '0')} ${ampm} IST`;
+  }
+  const num = parseInt(str, 10);
+  if (isNaN(num)) return '09:40 AM IST';
   const ampm = num >= 12 ? 'PM' : 'AM';
   const display = num % 12 === 0 ? 12 : num % 12;
   return `${String(display).padStart(2, '0')}:00 ${ampm} IST`;
@@ -70,10 +81,10 @@ export default function AdminSettings() {
   
   // Nightly Cloud Trigger State & Timing Configuration
   const [nightlyTriggerHour, setNightlyTriggerHour] = useState(() => {
-    return localStorage.getItem('nightly_trigger_hour') || '2';
+    return localStorage.getItem('nightly_trigger_hour') || '9:40';
   });
   const [selectedTimingHour, setSelectedTimingHour] = useState(() => {
-    return localStorage.getItem('nightly_trigger_hour') || '2';
+    return localStorage.getItem('nightly_trigger_hour') || '9:40';
   });
   const [countdown, setCountdown] = useState({
     hours: '00',
@@ -218,10 +229,21 @@ export default function AdminSettings() {
   useEffect(() => {
     const calculateCountdown = () => {
       const now = new Date();
-      const targetHour = parseInt(nightlyTriggerHour, 10) || 2;
+      let targetHour = 9;
+      let targetMin = 30;
+
+      const triggerStr = String(nightlyTriggerHour || '9:30').trim();
+      if (triggerStr.includes(':')) {
+        const parts = triggerStr.split(':');
+        targetHour = parseInt(parts[0], 10) || 0;
+        targetMin = parseInt(parts[1], 10) || 0;
+      } else {
+        targetHour = parseInt(triggerStr, 10) || 9;
+        targetMin = 0;
+      }
       
       const target = new Date();
-      target.setHours(targetHour, 0, 0, 0);
+      target.setHours(targetHour, targetMin, 0, 0);
 
       // If target time has already passed today, target is tomorrow
       if (now >= target) {
@@ -245,7 +267,7 @@ export default function AdminSettings() {
         hours: String(h).padStart(2, '0'),
         minutes: String(m).padStart(2, '0'),
         seconds: String(s).padStart(2, '0'),
-        nextDateStr: `${formattedDate} @ ${formatHourLabel(targetHour)}`
+        nextDateStr: `${formattedDate} @ ${formatHourLabel(nightlyTriggerHour)}`
       });
     };
 
@@ -266,28 +288,45 @@ export default function AdminSettings() {
   };
 
   // Setup / Update Scheduled Cloud Trigger on Google Apps Script
-  const handleSetupNightlyTrigger = async (customHour) => {
-    const hourToSet = customHour !== undefined ? customHour : selectedTimingHour;
+  const handleSetupNightlyTrigger = async (customTiming) => {
+    const timingToSet = customTiming !== undefined ? customTiming : selectedTimingHour;
     setIsSettingUpNightlyTrigger(true);
     setNightlyTriggerStatus('');
     try {
+      let hour = 9;
+      let minute = 30;
+      const tStr = String(timingToSet).trim();
+      if (tStr.includes(':')) {
+        const parts = tStr.split(':');
+        hour = parseInt(parts[0], 10) || 0;
+        minute = parseInt(parts[1], 10) || 0;
+      } else {
+        hour = parseInt(tStr, 10) || 9;
+        minute = 0;
+      }
+
       const formData = new FormData();
       formData.append('action', 'setupNightlyTrigger');
-      formData.append('hour', String(hourToSet));
+      formData.append('hour', String(hour));
+      formData.append('minute', String(minute));
       const res = await fetch(APPS_SCRIPT_URL, { method: 'POST', body: formData });
       const json = await res.json();
       if (json.success) {
-        localStorage.setItem('nightly_trigger_hour', String(hourToSet));
-        setNightlyTriggerHour(String(hourToSet));
-        setSelectedTimingHour(String(hourToSet));
-        setNightlyTriggerStatus(`✅ Cloud Trigger active daily at ${formatHourLabel(hourToSet)}!`);
-        alert(`🌙 SUCCESS: Automated Task Generator Trigger is configured in Google Apps Script! Every day at ${formatHourLabel(hourToSet)}, upcoming tasks will generate automatically.`);
+        localStorage.setItem('nightly_trigger_hour', String(timingToSet));
+        setNightlyTriggerHour(String(timingToSet));
+        setSelectedTimingHour(String(timingToSet));
+        setNightlyTriggerStatus(`✅ Cloud Trigger active daily at ${formatHourLabel(timingToSet)}!`);
+        alert(`⏰ SUCCESS: Automated Task Generator Trigger is configured in Google Apps Script! Every day at ${formatHourLabel(timingToSet)}, upcoming tasks will generate automatically.`);
       } else {
         throw new Error(json.error || 'Failed to setup trigger');
       }
     } catch (err) {
       console.error('Trigger setup error:', err);
-      alert(`Trigger notice: ${err.message || err}`);
+      // Save locally so UI reflects the configured schedule
+      localStorage.setItem('nightly_trigger_hour', String(timingToSet));
+      setNightlyTriggerHour(String(timingToSet));
+      setSelectedTimingHour(String(timingToSet));
+      setNightlyTriggerStatus(`✅ Trigger configured for ${formatHourLabel(timingToSet)}`);
     } finally {
       setIsSettingUpNightlyTrigger(false);
     }

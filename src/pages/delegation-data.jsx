@@ -243,14 +243,21 @@ export default function DelegationPage({
                     <tbody className="bg-white divide-y divide-gray-200">
                         {loading ? (
                             <tr>
-                                <td colSpan={columns.length} className="px-6 py-8 text-center">
-                                    <div className="flex flex-col items-center justify-center">
-                                        <div className="relative inline-flex items-center justify-center w-12 h-12 mb-4">
-  <div className="absolute inset-0 rounded-full border-4 border-t-purple-600 border-b-purple-600 border-l-transparent border-r-transparent animate-spin shadow-[0_0_15px_rgba(147,51,234,0.5)]"></div>
-  <div className="absolute inset-1 rounded-full border-4 border-r-pink-500 border-l-pink-500 border-t-transparent border-b-transparent animate-[spin_1.5s_linear_infinite_reverse] shadow-[0_0_10px_rgba(236,72,153,0.5)]"></div>
-  <div className="w-3 h-3 bg-purple-500 rounded-full animate-pulse shadow-[0_0_20px_rgba(147,51,234,1)]"></div>
-</div>
-                                        <p className="text-purple-600">Loading delegation data...</p>
+                                <td colSpan={columns.length} className="px-6 py-12 text-center">
+                                    <div className="flex justify-center">
+                                        <div className="luxury-loader-card">
+                                            <div className="luxury-spinner-box">
+                                                <div className="luxury-aura"></div>
+                                                <div className="luxury-track"></div>
+                                                <div className="luxury-ring-outer"></div>
+                                                <div className="luxury-ring-inner"></div>
+                                                <div className="luxury-core">
+                                                    <div className="luxury-core-wave"></div>
+                                                </div>
+                                            </div>
+                                            <p className="luxury-text-title">Loading delegation data...</p>
+                                            <p className="luxury-text-subtitle">Syncing with Google Sheets</p>
+                                        </div>
                                     </div>
                                 </td>
                             </tr>

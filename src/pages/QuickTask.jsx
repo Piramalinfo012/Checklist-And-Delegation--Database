@@ -344,10 +344,19 @@ export default function QuickTask() {
   if (userLoading) {
     return (
       <AdminLayout>
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mb-4"></div>
-            <p className="text-purple-600 text-lg">Loading user session...</p>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="luxury-loader-card">
+            <div className="luxury-spinner-box">
+              <div className="luxury-aura"></div>
+              <div className="luxury-track"></div>
+              <div className="luxury-ring-outer"></div>
+              <div className="luxury-ring-inner"></div>
+              <div className="luxury-core">
+                <div className="luxury-core-wave"></div>
+              </div>
+            </div>
+            <p className="luxury-text-title">Loading user session...</p>
+            <p className="luxury-text-subtitle">Authenticating credentials</p>
           </div>
         </div>
       </AdminLayout>
@@ -427,7 +436,7 @@ export default function QuickTask() {
 
             <div className="relative flex-1 min-w-[200px]">
               <Search
-                className="absolute left-3 top-7 transform -translate-y-1/2 text-gray-400"
+                className="absolute left-3 top-7 transform -translate-y-1/2 text-slate-500"
                 size={18}
               />
               <input
@@ -435,7 +444,7 @@ export default function QuickTask() {
                 placeholder="Search tasks..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-purple-200 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-full pl-10 pr-4 py-2 bg-slate-100/90 hover:bg-slate-100 focus:bg-white text-slate-800 font-medium placeholder:text-slate-500 border-2 border-slate-300 hover:border-slate-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all shadow-sm"
                 disabled={loading || delegationLoading}
               />
             </div>
@@ -611,12 +620,21 @@ export default function QuickTask() {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {loading ? (
                       <tr>
-                        <td colSpan={8} className="px-6 py-8 text-center">
-                          <div className="flex flex-col items-center justify-center">
-                            <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500 mb-2"></div>
-                            <p className="text-purple-600">
-                              Loading checklist data...
-                            </p>
+                        <td colSpan={8} className="px-6 py-12 text-center">
+                          <div className="flex justify-center">
+                            <div className="luxury-loader-card">
+                              <div className="luxury-spinner-box">
+                                <div className="luxury-aura"></div>
+                                <div className="luxury-track"></div>
+                                <div className="luxury-ring-outer"></div>
+                                <div className="luxury-ring-inner"></div>
+                                <div className="luxury-core">
+                                  <div className="luxury-core-wave"></div>
+                                </div>
+                              </div>
+                              <p className="luxury-text-title">Loading checklist data...</p>
+                              <p className="luxury-text-subtitle">Syncing with Google Sheets</p>
+                            </div>
                           </div>
                         </td>
                       </tr>

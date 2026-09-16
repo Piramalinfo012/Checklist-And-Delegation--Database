@@ -1484,7 +1484,7 @@ function DelegationDataPage() {
           <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
             <div className="relative w-full sm:w-auto">
               <Search
-                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500"
                 size={18}
               />
               <input
@@ -1494,7 +1494,7 @@ function DelegationDataPage() {
                 }
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-purple-200 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 w-full sm:w-auto"
+                className="pl-10 pr-4 py-2 bg-slate-100/90 hover:bg-slate-100 focus:bg-white text-slate-800 font-medium placeholder:text-slate-500 border-2 border-slate-300 hover:border-slate-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 w-full sm:w-auto transition-all shadow-sm"
               />
             </div>
 
@@ -1566,7 +1566,7 @@ function DelegationDataPage() {
               placeholder="All Names..."
               value={nameFilter}
               onChange={(e) => setNameFilter(e.target.value)}
-              className="bg-white border-2 border-purple-300 rounded-xl px-4 py-2 text-sm w-full sm:w-[180px] focus:outline-none focus:ring-2 focus:ring-purple-400 shadow-[0_4px_10px_rgba(168,85,247,0.2)] transition-all cursor-text placeholder-purple-400"
+              className="bg-slate-100/90 hover:bg-slate-100 focus:bg-white text-slate-800 font-medium placeholder:text-slate-500 border-2 border-slate-300 hover:border-slate-400 rounded-xl px-4 py-2 text-sm w-full sm:w-[180px] focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all cursor-text shadow-sm"
               disabled={userRole !== "admin" && uniqueNames.length <= 1}
             />
             <datalist id="name-options">
@@ -1581,7 +1581,7 @@ function DelegationDataPage() {
             <div className="flex items-center space-x-1 flex-1 sm:flex-none min-w-[140px]">
               <label
                 htmlFor="start-date"
-                className="text-xs font-semibold text-purple-700 shrink-0"
+                className="text-xs font-bold text-slate-700 shrink-0"
               >
                 From:
               </label>
@@ -1592,13 +1592,13 @@ function DelegationDataPage() {
                 onChange={(e) =>
                   setDateRange((prev) => ({ ...prev, start: e.target.value }))
                 }
-                className="bg-white border-2 border-purple-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400 shadow-md shadow-purple-100 w-full"
+                className="bg-slate-100/90 hover:bg-slate-100 focus:bg-white text-slate-800 font-medium border-2 border-slate-300 hover:border-slate-400 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm w-full"
               />
             </div>
             <div className="flex items-center space-x-1 flex-1 sm:flex-none min-w-[140px]">
               <label
                 htmlFor="end-date"
-                className="text-xs font-semibold text-purple-700 shrink-0"
+                className="text-xs font-bold text-slate-700 shrink-0"
               >
                 To:
               </label>
@@ -1609,7 +1609,7 @@ function DelegationDataPage() {
                 onChange={(e) =>
                   setDateRange((prev) => ({ ...prev, end: e.target.value }))
                 }
-                className="bg-white border-2 border-purple-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400 shadow-md shadow-purple-100 w-full"
+                className="bg-slate-100/90 hover:bg-slate-100 focus:bg-white text-slate-800 font-medium border-2 border-slate-300 hover:border-slate-400 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm w-full"
               />
             </div>
           </div>
@@ -1622,7 +1622,7 @@ function DelegationDataPage() {
               placeholder="All Status"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-white border-2 border-purple-300 rounded-xl px-4 py-2 text-sm w-full sm:w-[180px] focus:outline-none focus:ring-2 focus:ring-purple-400 shadow-[0_4px_10px_rgba(168,85,247,0.2)] transition-all cursor-text placeholder-purple-400"
+              className="bg-slate-100/90 hover:bg-slate-100 focus:bg-white text-slate-800 font-medium placeholder:text-slate-500 border-2 border-slate-300 hover:border-slate-400 rounded-xl px-4 py-2 text-sm w-full sm:w-[180px] focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all cursor-text shadow-sm"
             />
             <datalist id="status-options">
               <option value="">
@@ -1695,13 +1695,20 @@ function DelegationDataPage() {
           </div>
 
           {loading ? (
-            <div className="text-center py-10">
-              <div className="relative inline-flex items-center justify-center w-12 h-12 mb-4">
-  <div className="absolute inset-0 rounded-full border-4 border-t-purple-600 border-b-purple-600 border-l-transparent border-r-transparent animate-spin shadow-[0_0_15px_rgba(147,51,234,0.5)]"></div>
-  <div className="absolute inset-1 rounded-full border-4 border-r-pink-500 border-l-pink-500 border-t-transparent border-b-transparent animate-[spin_1.5s_linear_infinite_reverse] shadow-[0_0_10px_rgba(236,72,153,0.5)]"></div>
-  <div className="w-3 h-3 bg-purple-500 rounded-full animate-pulse shadow-[0_0_20px_rgba(147,51,234,1)]"></div>
-</div>
-              <p className="text-purple-600">Loading task data...</p>
+            <div className="text-center py-12 flex justify-center">
+              <div className="luxury-loader-card">
+                <div className="luxury-spinner-box">
+                  <div className="luxury-aura"></div>
+                  <div className="luxury-track"></div>
+                  <div className="luxury-ring-outer"></div>
+                  <div className="luxury-ring-inner"></div>
+                  <div className="luxury-core">
+                    <div className="luxury-core-wave"></div>
+                  </div>
+                </div>
+                <p className="luxury-text-title">Loading task data...</p>
+                <p className="luxury-text-subtitle">Syncing with Google Sheets</p>
+              </div>
             </div>
           ) : error ? (
             <div className="bg-red-50 p-4 rounded-md text-red-800 text-center">

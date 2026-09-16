@@ -493,7 +493,19 @@ const AllTasks = () => {
   if (isLoading && currentPage === 1) {
     return (
       <div className="flex justify-center items-center h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-purple-500"></div>
+        <div className="luxury-loader-card">
+          <div className="luxury-spinner-box">
+            <div className="luxury-aura"></div>
+            <div className="luxury-track"></div>
+            <div className="luxury-ring-outer"></div>
+            <div className="luxury-ring-inner"></div>
+            <div className="luxury-core">
+              <div className="luxury-core-wave"></div>
+            </div>
+          </div>
+          <p className="luxury-text-title">Loading all tasks...</p>
+          <p className="luxury-text-subtitle">Retrieving records from database</p>
+        </div>
       </div>
     )
   }
@@ -694,7 +706,13 @@ const AllTasks = () => {
         {/* Loading indicator for pagination */}
         {isLoading && (
           <div className="flex justify-center items-center py-4">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500"></div>
+            <div className="luxury-spinner-box !w-8 !h-8 !mb-0">
+              <div className="luxury-aura !inset-[-4px]"></div>
+              <div className="luxury-track"></div>
+              <div className="luxury-ring-outer !border-2"></div>
+              <div className="luxury-ring-inner !inset-1 !border-2"></div>
+              <div className="luxury-core !w-2 !h-2"></div>
+            </div>
           </div>
         )}
       </div>

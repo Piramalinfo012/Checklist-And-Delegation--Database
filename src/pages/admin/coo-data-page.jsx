@@ -637,13 +637,13 @@ const confirmMarkDone = async () => {
 
           <div className="flex space-x-4">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500" size={18} />
               <input
                 type="text"
                 placeholder={showHistory ? "Search history..." : "Search transactions..."}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-purple-200 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                className="pl-10 pr-4 py-2 bg-slate-100/90 hover:bg-slate-100 focus:bg-white text-slate-800 font-medium placeholder:text-slate-500 border-2 border-slate-300 hover:border-slate-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all shadow-sm"
               />
             </div>
             
@@ -724,13 +724,20 @@ const confirmMarkDone = async () => {
           </div>
             
           {loading ? (
-            <div className="text-center py-10">
-              <div className="relative inline-flex items-center justify-center w-12 h-12 mb-4">
-  <div className="absolute inset-0 rounded-full border-4 border-t-purple-600 border-b-purple-600 border-l-transparent border-r-transparent animate-spin shadow-[0_0_15px_rgba(147,51,234,0.5)]"></div>
-  <div className="absolute inset-1 rounded-full border-4 border-r-pink-500 border-l-pink-500 border-t-transparent border-b-transparent animate-[spin_1.5s_linear_infinite_reverse] shadow-[0_0_10px_rgba(236,72,153,0.5)]"></div>
-  <div className="w-3 h-3 bg-purple-500 rounded-full animate-pulse shadow-[0_0_20px_rgba(147,51,234,1)]"></div>
-</div>
-              <p className="text-purple-600">Loading account data...</p>
+            <div className="text-center py-12 flex justify-center">
+              <div className="luxury-loader-card">
+                <div className="luxury-spinner-box">
+                  <div className="luxury-aura"></div>
+                  <div className="luxury-track"></div>
+                  <div className="luxury-ring-outer"></div>
+                  <div className="luxury-ring-inner"></div>
+                  <div className="luxury-core">
+                    <div className="luxury-core-wave"></div>
+                  </div>
+                </div>
+                <p className="luxury-text-title">Loading COO data...</p>
+                <p className="luxury-text-subtitle">Syncing with Google Sheets</p>
+              </div>
             </div>
           ) : error ? (
             <div className="bg-red-50 p-4 rounded-md text-red-800 text-center">

@@ -1225,53 +1225,53 @@ export default function AssignTask() {
 
   return (
     <AdminLayout>
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold tracking-tight mb-6 text-purple-500">
+      <div className="max-w-2xl mx-auto">
+        <h1 className="text-xl font-bold tracking-tight mb-5 text-purple-600">
           Assign New Task
         </h1>
 
         {!selectedTaskType ? (
-          <div className="grid md:grid-cols-2 gap-6 mb-8">
+          <div className="grid sm:grid-cols-2 gap-5 mb-8 max-w-xl mx-auto">
             {/* Checklist Task Option */}
             <div
               onClick={() => handleTaskTypeSelect("checklist")}
-              className="cursor-pointer p-6 border-2 border-purple-200 rounded-lg bg-white shadow-md hover:shadow-lg transition-all hover:border-purple-400"
+              className="cursor-pointer card-3d-wrapper card-3d-blue group text-center p-6 flex flex-col items-center justify-between min-h-[260px] w-full"
             >
-              <div className="text-center">
-                <div className="bg-purple-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <FileCheck className="h-8 w-8 text-purple-600" />
+              <div className="flex flex-col items-center">
+                <div className="crystal-orb-3d crystal-orb-md crystal-orb-blue mb-4 shadow-md">
+                  <FileCheck className="h-6 w-6 text-white drop-shadow" />
                 </div>
-                <h3 className="text-lg font-semibold text-black mb-2">
+                <h3 className="text-base font-bold text-slate-800 mb-1.5 group-hover:text-blue-600 transition-colors">
                   Checklist Task
                 </h3>
-                <p className="text-sm text-gray-600">
-                  All frequencies of Daily , Weekly , Monthly , Yearly etc.
+                <p className="text-xs text-slate-500 max-w-[200px] leading-relaxed">
+                  All frequencies of Daily, Weekly, Monthly, Yearly etc.
                 </p>
-                <button className="mt-4 bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 transition-colors">
-                  Select Checklist
-                </button>
               </div>
+              <button className="mt-5 w-full max-w-[190px] btn-3d-blue font-semibold py-2.5 px-4 rounded-xl transition-all duration-300 transform group-hover:scale-105 active:scale-95 text-xs tracking-wide">
+                Select Checklist
+              </button>
             </div>
 
             {/* Delegation Task Option */}
             <div
               onClick={() => handleTaskTypeSelect("delegation")}
-              className="cursor-pointer p-6 border-2 border-purple-200 rounded-lg bg-white shadow-md hover:shadow-lg transition-all hover:border-purple-400"
+              className="cursor-pointer card-3d-wrapper card-3d-purple group text-center p-6 flex flex-col items-center justify-between min-h-[260px] w-full"
             >
-              <div className="text-center">
-                <div className="bg-purple-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <BellRing className="h-8 w-8 text-purple-600" />
+              <div className="flex flex-col items-center">
+                <div className="crystal-orb-3d crystal-orb-md crystal-orb-purple mb-4 shadow-md">
+                  <BellRing className="h-6 w-6 text-white drop-shadow" />
                 </div>
-                <h3 className="text-lg font-semibold text-black mb-2">
+                <h3 className="text-base font-bold text-slate-800 mb-1.5 group-hover:text-purple-600 transition-colors">
                   Delegation Task
                 </h3>
-                <p className="text-sm text-gray-600">
-                  Only for 'One-Time' , 'Critical' and 'Urgent' frequency.
+                <p className="text-xs text-slate-500 max-w-[200px] leading-relaxed">
+                  Only for 'One-Time', 'Critical' and 'Urgent' frequency.
                 </p>
-                <button className="mt-4 bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 transition-colors">
-                  Select Delegation
-                </button>
               </div>
+              <button className="mt-5 w-full max-w-[190px] btn-3d-purple font-semibold py-2.5 px-4 rounded-xl transition-all duration-300 transform group-hover:scale-105 active:scale-95 text-xs tracking-wide">
+                Select Delegation
+              </button>
             </div>
           </div>
         ) : (

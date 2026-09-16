@@ -594,7 +594,19 @@ const CalendarUI = ({ userRole, userName, displayName }) => {
     return (
       <AdminLayout>
         <div className="flex justify-center items-center h-[calc(100vh-4rem)]">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500"></div>
+          <div className="luxury-loader-card">
+            <div className="luxury-spinner-box">
+              <div className="luxury-aura"></div>
+              <div className="luxury-track"></div>
+              <div className="luxury-ring-outer"></div>
+              <div className="luxury-ring-inner"></div>
+              <div className="luxury-core">
+                <div className="luxury-core-wave"></div>
+              </div>
+            </div>
+            <p className="luxury-text-title">Loading calendar...</p>
+            <p className="luxury-text-subtitle">Organizing schedule and tasks</p>
+          </div>
         </div>
       </AdminLayout>
     );

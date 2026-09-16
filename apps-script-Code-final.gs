@@ -409,8 +409,9 @@ function doPost(e) {
     }
 
     if (params.action === 'setupNightlyTrigger' || params.action === 'setupDailyTrigger') {
-      var hour = params.hour !== undefined ? parseInt(params.hour, 10) : 2;
-      var triggerRes = setupDailyTrigger(hour);
+      var hour = params.hour !== undefined ? parseInt(params.hour, 10) : 9;
+      var minute = params.minute !== undefined ? parseInt(params.minute, 10) : 40;
+      var triggerRes = setupDailyTrigger(hour, minute);
       return ContentService.createTextOutput(JSON.stringify(triggerRes))
         .setMimeType(ContentService.MimeType.JSON);
     }
@@ -893,15 +894,23 @@ function parseDate(dateString) {
 }
 
 // ---------------------------------------------------------------------------
-// NIGHTLY AUTOMATED TASK GENERATION (EVERY NIGHT AT 2:00 AM IST)
+// AUTOMATED TASK GENERATION (DAILY AT 9:40 AM IST)
 // ---------------------------------------------------------------------------
 
 var SUPABASE_URL = "https://fhbkzqgulnlyxubsnegl.supabase.co";
 var SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZoYmt6cWd1bG5seXh1YnNuZWdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkxMjE1NzYsImV4cCI6MjEwNDY5NzU3Nn0.UqZmR7fD1lNCEVClx4BUQr9MZgO4-JNv0aqrB5dpIeI";
 
-function setupDailyTrigger(hour) {
+function setupDailyTrigger(hour, minute) {
   try {
-    var targetHour = (hour !== undefined && !isNaN(hour)) ? Math.max(0, Math.min(23, parseInt(hour, 10))) : 2;
+    var targetHour = (hour !== undefined && !isNaN(hour)) ? Math.max(0, Math.min(23, parseInt(hour, 10))) : 9;
+    var targetMinute = (minute !== undefined && !isNaN(minute)) ? parseInt(minute, 10) : 40;
+    
+    // Choose nearest valid minute (0, 15, 30, 45) for ScriptApp nearMinute
+    var validNearMinutes = [0, 15, 30, 45];
+    var scriptMinute = validNearMinutes.reduce(function(prev, curr) {
+      return (Math.abs(curr - targetMinute) < Math.abs(prev - targetMinute) ? curr : prev);
+    });
+
     var triggers = ScriptApp.getProjectTriggers();
     for (var i = 0; i < triggers.length; i++) {
       var func = triggers[i].getHandlerFunction();
@@ -910,24 +919,26 @@ function setupDailyTrigger(hour) {
       }
     }
 
-    // Schedule every day at targetHour:00 IST (Cloud Cron)
+    // Schedule every day at targetHour:scriptMinute IST (Cloud Cron)
     var trigger = ScriptApp.newTrigger('dailyNightlyTaskGenerator')
       .timeBased()
       .everyDays(1)
       .atHour(targetHour)
-      .nearMinute(0)
+      .nearMinute(scriptMinute)
       .create();
 
     var ampm = targetHour >= 12 ? 'PM' : 'AM';
     var displayHour = targetHour % 12 === 0 ? 12 : targetHour % 12;
-    var timeStr = (displayHour < 10 ? '0' : '') + displayHour + ':00 ' + ampm + ' IST';
+    var minStr = (targetMinute < 10 ? '0' : '') + targetMinute;
+    var timeStr = (displayHour < 10 ? '0' : '') + displayHour + ':' + minStr + ' ' + ampm + ' IST';
 
     return {
       success: true,
       message: "Daily Task Generation Trigger set up successfully for " + timeStr + "!",
       triggerId: trigger.getUniqueId(),
       scheduledHour: timeStr,
-      targetHour: targetHour
+      targetHour: targetHour,
+      targetMinute: targetMinute
     };
   } catch (error) {
     return { success: false, error: error.toString() };
