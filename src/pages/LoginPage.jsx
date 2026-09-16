@@ -1,9 +1,24 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "../lib/supabaseClient";
-import { Eye, EyeOff } from "lucide-react";
+import { 
+  Eye, 
+  EyeOff, 
+  ShieldCheck, 
+  CheckCircle2, 
+  ArrowRight, 
+  ClipboardCheck, 
+  Clock, 
+  Zap,
+  Activity,
+  Layers,
+  Database,
+  Users,
+  Check
+} from "lucide-react";
 
 const TypingText = ({ text }) => {
   const [displayed, setDisplayed] = useState("");
@@ -14,22 +29,28 @@ const TypingText = ({ text }) => {
       const timer = setTimeout(() => {
         setDisplayed((prev) => prev + text.charAt(index));
         setIndex((prev) => prev + 1);
-      }, 150);
+      }, 85);
       return () => clearTimeout(timer);
     } else {
       const timer = setTimeout(() => {
         setDisplayed("");
         setIndex(0);
-      }, 3000);
+      }, 3500);
       return () => clearTimeout(timer);
     }
   }, [index, text]);
 
   return (
-    <span className="font-semibold inline-flex items-center">
-      {displayed}
-      <span className="ml-1 w-0.5 h-4 bg-white animate-pulse inline-block"></span>
-    </span>
+    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/90 border border-emerald-500/40 shadow-sm backdrop-blur-md">
+      <span className="flex h-2 w-2 relative shrink-0">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+      </span>
+      <span className="text-[10px] sm:text-[11px] font-black tracking-widest text-emerald-300 font-mono uppercase">
+        {displayed || "DEVELOPED BY DEEPAK SAHU"}
+      </span>
+      <span className="w-1 h-3 bg-emerald-400 animate-pulse rounded-xs"></span>
+    </div>
   );
 };
 
@@ -39,9 +60,9 @@ const LoginPage = () => {
   const [isLoginLoading, setIsLoginLoading] = useState(false);
   const [visible, setVisible] = useState(false);
   const [masterData, setMasterData] = useState({
-    userCredentials: {}, // Object where keys are usernames and values are passwords
+    userCredentials: {},
     userRoles: {},
-    userEmails: {}, // Object where keys are usernames and values are roles
+    userEmails: {},
   });
   const [formData, setFormData] = useState({
     username: "",
@@ -49,17 +70,12 @@ const LoginPage = () => {
   });
   const [toast, setToast] = useState({ show: false, message: "", type: "" });
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
-  const [showUpdatePopup, setShowUpdatePopup] = useState(false);
   const [loggedInUsername, setLoggedInUsername] = useState("");
 
-  // Function to check if a role is any variation of "inactive"
+  // Check if role is inactive
   const isInactiveRole = (role) => {
     if (!role) return false;
-
-    // Convert to lowercase
     const normalizedRole = String(role).toLowerCase().trim();
-
-    // Check for different variations of "inactive" status
     return (
       normalizedRole === "inactive" ||
       normalizedRole === "in active" ||
@@ -73,7 +89,6 @@ const LoginPage = () => {
     const fetchMasterData = async () => {
       const CACHE_TTL = 60 * 60 * 1000; // 1 Hour TTL
 
-      // 1. Try to load from cache first for instant UI response
       const cachedDataStr = localStorage.getItem("masterDataCache");
       const cachedTimeStr = localStorage.getItem("masterDataCacheTime");
       let hasCache = false;
@@ -83,7 +98,7 @@ const LoginPage = () => {
         try {
           const cachedData = JSON.parse(cachedDataStr);
           setMasterData(cachedData);
-          setIsDataLoading(false); // Enable login button immediately
+          setIsDataLoading(false);
           hasCache = true;
 
           const cachedTime = Number(cachedTimeStr || 0);
@@ -95,20 +110,16 @@ const LoginPage = () => {
         }
       }
 
-      // If cache is valid (within 1 hour), reuse cached data and avoid redundant API call
-      if (isCacheValid) {
-        return;
-      }
+      if (isCacheValid) return;
 
       try {
         if (!hasCache) {
-          setIsDataLoading(true); // Only show spinner if no cache exists
+          setIsDataLoading(true);
         }
 
         const { data, error } = await supabase.from('Whatsapp').select('*');
         if (error) throw error;
 
-        // Create userCredentials and userRoles objects from the sheet data
         const userCredentials = {};
         const userRoles = {};
         const userEmails = {};
@@ -133,22 +144,17 @@ const LoginPage = () => {
         const newMasterData = { userCredentials, userRoles, userEmails };
         setMasterData(newMasterData);
         
-        // Save to cache with timestamp for 1-hour refresh interval
         try {
           localStorage.setItem("masterDataCache", JSON.stringify(newMasterData));
           localStorage.setItem("masterDataCacheTime", Date.now().toString());
         } catch(e) {
-          console.warn('Cache full');
+          console.warn('Cache storage warning');
         }
 
       } catch (error) {
         console.error("Error Fetching Master Data:", error);
-        
         if (!hasCache) {
-          showToast(
-            `Network error: ${error.message}. Please try again later.`,
-            "error"
-          );
+          showToast(`Network error: ${error.message}. Please try again later.`, "error");
         }
       } finally {
         setIsDataLoading(false);
@@ -163,20 +169,6 @@ const LoginPage = () => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const logAttendance = async (username, role) => {
-    try {
-      // Find the user in Whatsapp sheet using Supabase to update Attendance
-      // For now, we update 'Whatsapp' table or whichever is representing attendance login.
-      // Assuming 'Whatsapp' has the attendance timestamp, or we just skip if not defined.
-      // Based on original code, it searched "Attendance Login" sheet. 
-      // Note: We might not have 'Attendance Login' migrated if they didn't provide it, 
-      // but if we do, we use Supabase to update it.
-      console.log('Skipping attendance log as table may not exist in Supabase yet.');
-    } catch (error) {
-      console.error("Error preparing attendance log:", error);
-    }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoginLoading(true);
@@ -185,55 +177,28 @@ const LoginPage = () => {
       const trimmedUsername = formData.username.trim().toLowerCase();
       const trimmedPassword = formData.password.trim();
 
-      //console.log("Login Attempt Details:")
-      //console.log("Entered Username:", trimmedUsername)
-      //console.log("Entered Password:", trimmedPassword) // For debugging (remove in production)
-      //console.log("Available Credentials Count:", Object.keys(masterData.userCredentials).length)
-      //console.log("Current userCredentials:", masterData.userCredentials)
-      //console.log("Current userRoles:", masterData.userRoles)
-
-      // Check if the username exists in our credentials map
       if (trimmedUsername in masterData.userCredentials) {
         const correctPassword = masterData.userCredentials[trimmedUsername];
         const userRole = masterData.userRoles[trimmedUsername];
         const userEmail = masterData.userEmails[trimmedUsername] || "";
 
-        //console.log("Found user in credentials map")
-        //console.log("Expected Password:", correctPassword)
-        //console.log("Password Match:", correctPassword === trimmedPassword)
-        //console.log("User Role:", userRole)
-        //console.log("User Email:", userEmail)
-
-        // Check if password matches
         if (correctPassword === trimmedPassword) {
-          // Store user info in sessionStorage
           sessionStorage.setItem("username", trimmedUsername);
           sessionStorage.setItem("email", userEmail);
-          setLoggedInUsername(trimmedUsername); // Set the username for the popup
+          setLoggedInUsername(trimmedUsername);
 
-          // Check if user is admin - explicitly compare with the string "admin"
           const isAdmin = userRole === "admin";
-          //console.log(`User ${trimmedUsername} is admin: ${isAdmin}`);
-
-          // Set role based on the fetched role
           sessionStorage.setItem("role", isAdmin ? "admin" : "user");
 
-          // For admin users, we don't want to restrict by department
           if (isAdmin) {
-            sessionStorage.setItem("department", "all"); // Admin sees all departments
-            sessionStorage.setItem("isAdmin", "true"); // Additional flag to ensure admin permissions
-            //console.log("ADMIN LOGIN - Setting full access permissions");
+            sessionStorage.setItem("department", "all");
+            sessionStorage.setItem("isAdmin", "true");
           } else {
             sessionStorage.setItem("department", trimmedUsername);
             sessionStorage.setItem("isAdmin", "false");
-            //console.log("USER LOGIN - Setting restricted access");
           }
 
-          // Clear previous user's specific cache to prevent data leakage
           try {
-            // Flush the global in-memory + app_cache_ sheet caches (main.jsx) so
-            // no previously-logged-in user's fetched sheet data survives into this
-            // session. The in-memory Map is not reachable via localStorage.
             if (typeof window !== 'undefined' && typeof window.clearAllSheetCaches === 'function') {
               window.clearAllSheetCaches();
             }
@@ -250,47 +215,21 @@ const LoginPage = () => {
             console.error("Failed to clear cache on login", e);
           }
 
-          // Log attendance to Google Sheet
-          logAttendance(trimmedUsername, userRole);
-
-          // Show success popup
           setShowSuccessPopup(true);
 
-          // After 2 seconds, hide the success popup and go straight to the dashboard.
-          // The "What's New" update popup is disabled — this used to gate navigation
-          // behind the user closing it (setShowUpdatePopup(true)), so we navigate here instead.
           setTimeout(() => {
             setShowSuccessPopup(false);
             navigate("/dashboard/admin");
-          }, 2000);
+          }, 1800);
 
-          showToast(
-            `Login successful. Welcome, ${trimmedUsername}!`,
-            "success"
-          );
+          showToast(`Login successful. Welcome, ${trimmedUsername}!`, "success");
           return;
         } else {
-          showToast(
-            "Username or password is incorrect. Please try again.",
-            "error"
-          );
+          showToast("Username or password is incorrect. Please try again.", "error");
         }
       } else {
-        showToast(
-          "Username or password is incorrect. Please try again.",
-          "error"
-        );
+        showToast("Username or password is incorrect. Please try again.", "error");
       }
-
-      // If we got here, login failed
-      console.error("Login Failed", {
-        usernameExists: trimmedUsername in masterData.userCredentials,
-        passwordMatch:
-          trimmedUsername in masterData.userCredentials
-            ? "Password did not match"
-            : "Username not found",
-        userRole: masterData.userRoles[trimmedUsername] || "No role",
-      });
     } catch (error) {
       console.error("Login Error:", error);
       showToast(`Login failed: ${error.message}. Please try again.`, "error");
@@ -303,453 +242,350 @@ const LoginPage = () => {
     setToast({ show: true, message, type });
     setTimeout(() => {
       setToast({ show: false, message: "", type: "" });
-    }, 5000); // Toast duration
+    }, 5000);
   };
 
   const togglePasswordVisibility = () => {
     setVisible(!visible);
   };
 
-  // 3D tilt for the login card: rotates toward the cursor and moves a glass
-  // "sheen" highlight with it, giving the flat card real depth.
-  const cardRef = useRef(null);
-  const sheenRef = useRef(null);
-
-  const handleCardMouseMove = (e) => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const card = cardRef.current;
-    if (!card) return;
-    const rect = card.getBoundingClientRect();
-    const px = (e.clientX - rect.left) / rect.width;
-    const py = (e.clientY - rect.top) / rect.height;
-    const rotY = (px - 0.5) * 14;
-    const rotX = (0.5 - py) * 10;
-    card.style.transform = `perspective(1200px) rotateX(${rotX}deg) rotateY(${rotY}deg)`;
-    if (sheenRef.current) {
-      sheenRef.current.style.background = `radial-gradient(circle at ${px * 100}% ${py * 100}%, rgba(255,255,255,0.55), transparent 45%)`;
-      sheenRef.current.style.opacity = "1";
-    }
-  };
-
-  const handleCardMouseLeave = () => {
-    const card = cardRef.current;
-    if (card) card.style.transform = "perspective(1200px) rotateX(0deg) rotateY(0deg)";
-    if (sheenRef.current) sheenRef.current.style.opacity = "0";
-  };
-
-  // Close the "What's New" popup and continue to the dashboard.
-  const handleCloseUpdatePopup = () => {
-    setShowUpdatePopup(false);
-    navigate("/dashboard/admin");
-  };
-
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-gray-50 font-sans">
-      {/* Left/Top Side - Image and Branding */}
-      <div className="relative w-full md:w-5/12 lg:w-1/2 min-h-[35vh] md:min-h-screen flex flex-col justify-center items-center overflow-hidden bg-purple-900">
-        <div className="absolute inset-0 z-0">
-          <img src="/login-bg.png" alt="Abstract Background" className="w-full h-full object-cover opacity-80" />
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-900/60 to-blue-900/80 mix-blend-multiply"></div>
-        </div>
-        
-        <div className="relative z-10 text-center text-white px-6 py-10 md:px-12 w-full max-w-lg mx-4 md:mx-0 rounded-3xl backdrop-blur-md bg-white/10 border border-white/20 shadow-[0_8px_32px_0_rgba(31,38,135,0.37)]">
-          <div className="mx-auto w-20 h-20 bg-white/20 rounded-2xl flex items-center justify-center mb-6 shadow-inner backdrop-blur-xl border border-white/30">
-            <i className="fas fa-clipboard-check text-4xl text-white"></i>
-          </div>
-          <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight mb-4 drop-shadow-md">
-            TaskMaster
-          </h1>
-          <p className="text-lg md:text-xl text-purple-100 font-light tracking-wide mb-8">
-            Checklist & Delegation System
-          </p>
-          
-          <div className="pt-6 border-t border-white/20 inline-block px-8">
-            <TypingText text="DEVELOPED BY DEEPAK SAHU" />
-          </div>
-        </div>
-      </div>
+    <div className="min-h-screen w-full bg-[#d5f4e6] p-3 sm:p-6 md:p-10 flex items-center justify-center font-sans antialiased selection:bg-emerald-600 selection:text-white relative overflow-hidden">
+      
+      {/* Exact Canvas Organic Decorative Blob Shapes (Matching reference image) */}
+      {/* Top Right Dark Emerald Organic Shape */}
+      <div 
+        className="absolute -top-16 -right-16 w-80 h-80 sm:w-[28rem] sm:h-[28rem] bg-[#059669] rounded-[45%_55%_65%_35%/50%_60%_40%_50%] pointer-events-none opacity-95"
+      />
+      
+      {/* Bottom Left Dark Emerald Organic Shape */}
+      <div 
+        className="absolute -bottom-20 -left-20 w-80 h-80 sm:w-[28rem] sm:h-[28rem] bg-[#059669] rounded-[55%_45%_35%_65%/60%_50%_50%_40%] pointer-events-none opacity-95"
+      />
 
-      {/* Right/Bottom Side - Login Form */}
-      <div
-        className="flex-1 flex items-center justify-center p-6 md:p-12 relative overflow-hidden"
-        style={{ background: "linear-gradient(135deg, #e8e0f0 0%, #d5cce0 25%, #c9c2d4 50%, #d0cad8 75%, #e2dce8 100%)" }}
+      {/* Main Floating White Split Card */}
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.98, y: 15 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="w-full max-w-[1140px] bg-white rounded-[2.25rem] sm:rounded-[2.75rem] shadow-[0_30px_90px_rgba(0,0,0,0.18)] p-4 sm:p-6 md:p-7 flex flex-col lg:flex-row gap-6 lg:gap-8 relative z-10"
       >
-        {/* Soft glow centered behind the card, echoing the card's own 3D shadow */}
-        <div className="absolute inset-0 [background:radial-gradient(42%_42%_at_50%_50%,rgba(255,255,255,0.35),transparent_70%)]"></div>
-
-        {/* Decorative mesh blobs, toned to match the dashboard's lavender-grey theme */}
-        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-80 h-80 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-blob" style={{ background: "#c9c2d4" }}></div>
-        <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-80 h-80 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-blob" style={{ background: "#d5cce0", animationDelay: "2s" }}></div>
-        <div className="absolute top-1/3 left-1/4 w-72 h-72 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob" style={{ background: "#e2dce8", animationDelay: "4s" }}></div>
-
-        {/* Running light border: a bright arc sweeps continuously around the card's edge */}
-        <div className="relative w-full max-w-md rounded-[2.05rem] p-[2px] overflow-hidden z-10">
-          <div
-            aria-hidden="true"
-            className="absolute -inset-full animate-[spin_3s_linear_infinite] motion-reduce:animate-none"
-            style={{
-              background:
-                "conic-gradient(from 0deg, transparent 0deg, transparent 260deg, #9333EA 285deg, #DB2777 300deg, #9333EA 315deg, transparent 340deg, transparent 360deg)",
-            }}
-          ></div>
-
-          <div
-            ref={cardRef}
-            onMouseMove={handleCardMouseMove}
-            onMouseLeave={handleCardMouseLeave}
-            className="relative w-full bg-white p-8 md:p-10 rounded-[2rem] border border-gray-100 transition-transform duration-200 ease-out will-change-transform"
-            style={{
-              boxShadow:
-                "0 2px 0 rgba(255,255,255,0.7) inset, 0 45px 80px -30px rgba(88,28,135,0.35), 0 18px 34px -16px rgba(219,39,119,0.25)",
-            }}
-          >
-          <div
-            ref={sheenRef}
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 rounded-[2rem] opacity-0 transition-opacity duration-200 mix-blend-overlay"
-          ></div>
-          <div className="text-center mb-10">
-            <h2 className="text-3xl font-bold text-gray-900 tracking-tight">Welcome Back</h2>
-            <p className="text-gray-500 mt-3 text-sm">Please enter your credentials to access your account</p>
+        
+        {/* ========================================================================= */}
+        {/* LEFT PANEL: Hilfbox Exact Style Liquid Wave & Team Bubbles                */}
+        {/* ========================================================================= */}
+        <div className="w-full lg:w-[49%] rounded-[2rem] sm:rounded-[2.25rem] bg-gradient-to-b from-[#eafaf2] via-[#d9f6e8] to-[#c7f2dc] p-6 sm:p-8 flex flex-col justify-between relative overflow-hidden min-h-[480px] lg:min-h-[560px]">
+          
+          {/* Organic Green Wavy Splash SVG Graphic in Top Right (Exact reference art) */}
+          <div className="absolute top-0 right-0 w-[90%] h-[65%] pointer-events-none">
+            <svg viewBox="0 0 400 320" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full object-cover">
+              <defs>
+                <linearGradient id="waveGradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#10b981" />
+                  <stop offset="60%" stopColor="#059669" />
+                  <stop offset="100%" stopColor="#84cc16" />
+                </linearGradient>
+              </defs>
+              <path 
+                d="M100 0C160 60 130 140 190 170C250 200 310 130 400 190V0H100Z" 
+                fill="url(#waveGradient2)" 
+              />
+              <path 
+                d="M170 0C210 50 190 100 250 130C310 160 350 90 400 140V0H170Z" 
+                fill="#34d399" 
+                opacity="0.4"
+              />
+            </svg>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
-              <label htmlFor="username" className="text-sm font-semibold text-gray-700 block">
-                Username
-              </label>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-purple-600 transition-colors">
-                  <i className="fas fa-user"></i>
+
+
+          {/* Center Content: Exact Headline Typography */}
+          <div className="relative z-10 my-auto py-6 text-center max-w-sm mx-auto">
+            <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight leading-tight">
+              Welcome to TaskMaster!
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-600 font-medium mt-3 leading-relaxed">
+              We are a team, together managing thousands of checklist tasks &amp; automated delegations every single day.
+            </p>
+          </div>
+
+          {/* Floating Circle Visual Badges with Pure White Ring Borders (Premium Glossy & Vibrant) */}
+          <div className="relative z-10 space-y-4">
+            <div className="relative h-24 sm:h-28 flex items-center justify-center">
+              
+              {/* Left Circle: Emerald Tasks Badge */}
+              <motion.div 
+                animate={{ y: [0, -6, 0] }}
+                transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
+                whileHover={{ scale: 1.15 }}
+                className="absolute left-3 sm:left-7 w-14 h-14 sm:w-16 sm:h-16 rounded-full shadow-[0_12px_28px_rgba(5,150,105,0.35)] ring-4 ring-white overflow-hidden cursor-pointer group"
+              >
+                <div className="w-full h-full bg-gradient-to-tr from-[#047857] via-[#059669] to-[#10b981] flex items-center justify-center relative">
+                  <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/35 to-transparent rounded-t-full pointer-events-none" />
+                  <ClipboardCheck className="h-6 w-6 sm:h-7 sm:w-7 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.25)] stroke-[2.2] group-hover:scale-110 transition-transform" />
                 </div>
+              </motion.div>
+
+              {/* Top Middle Circle: Radiant Amber Bolt */}
+              <motion.div 
+                animate={{ y: [0, 5, 0] }}
+                transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
+                whileHover={{ scale: 1.15 }}
+                className="absolute top-0 w-12 h-12 sm:w-13 sm:h-13 rounded-full shadow-[0_10px_22px_rgba(245,158,11,0.38)] ring-4 ring-white overflow-hidden cursor-pointer group"
+              >
+                <div className="w-full h-full bg-gradient-to-tr from-[#d97706] via-[#f59e0b] to-[#fbbf24] flex items-center justify-center relative">
+                  <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/35 to-transparent rounded-t-full pointer-events-none" />
+                  <Zap className="h-5 w-5 sm:h-6 sm:w-6 text-white fill-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.25)] group-hover:scale-110 transition-transform" />
+                </div>
+              </motion.div>
+
+              {/* Bottom Middle Circle: Indigo Workflow Layers */}
+              <motion.div 
+                animate={{ y: [0, -5, 0] }}
+                transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut", delay: 0.4 }}
+                whileHover={{ scale: 1.15 }}
+                className="absolute bottom-0 w-12 h-12 sm:w-13 sm:h-13 rounded-full shadow-[0_10px_22px_rgba(99,102,241,0.38)] ring-4 ring-white overflow-hidden cursor-pointer group"
+              >
+                <div className="w-full h-full bg-gradient-to-tr from-[#4338ca] via-[#6366f1] to-[#818cf8] flex items-center justify-center relative">
+                  <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/35 to-transparent rounded-t-full pointer-events-none" />
+                  <Layers className="h-5 w-5 sm:h-6 sm:w-6 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.25)] stroke-[2.2] group-hover:scale-110 transition-transform" />
+                </div>
+              </motion.div>
+
+              {/* Right Circle: Azure Shield Security */}
+              <motion.div 
+                animate={{ y: [0, 6, 0] }}
+                transition={{ duration: 3.0, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
+                whileHover={{ scale: 1.15 }}
+                className="absolute right-3 sm:right-7 w-14 h-14 sm:w-16 sm:h-16 rounded-full shadow-[0_12px_28px_rgba(2,132,199,0.35)] ring-4 ring-white overflow-hidden cursor-pointer group"
+              >
+                <div className="w-full h-full bg-gradient-to-tr from-[#0369a1] via-[#0284c7] to-[#38bdf8] flex items-center justify-center relative">
+                  <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/35 to-transparent rounded-t-full pointer-events-none" />
+                  <ShieldCheck className="h-6 w-6 sm:h-7 sm:w-7 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.25)] stroke-[2.2] group-hover:scale-110 transition-transform" />
+                </div>
+              </motion.div>
+
+            </div>
+
+            {/* Pagination Dots (Exact reference style) */}
+            <div className="flex items-center justify-center gap-1.5 pt-1">
+              <span className="w-4 h-1.5 rounded-full bg-emerald-600"></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-300"></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-200"></span>
+            </div>
+
+            {/* Bottom Motion Badge: DEVELOPED BY DEEPAK SAHU */}
+            <div className="pt-1 flex justify-center">
+              <TypingText text="DEVELOPED BY DEEPAK SAHU" />
+            </div>
+          </div>
+
+        </div>
+
+        {/* ========================================================================= */}
+        {/* RIGHT PANEL: Get Started Clean Underline Form                             */}
+        {/* ========================================================================= */}
+        <div className="flex-1 flex flex-col justify-center px-4 sm:px-8 md:px-12 py-6 sm:py-10">
+          
+          <div className="max-w-md w-full mx-auto space-y-7">
+            
+            {/* Header: Get Started */}
+            <div className="text-center sm:text-left">
+              <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
+                Get Started
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-400 font-medium mt-1">
+                Already have account? <span className="text-emerald-600 font-bold cursor-pointer">Sign In</span>
+              </p>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="space-y-6 pt-2">
+              
+              {/* Username Input with Clean Minimal Underline */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-400 block">
+                  Name / Username
+                </label>
                 <input
-                  id="username"
-                  name="username"
                   type="text"
+                  name="username"
                   placeholder="Enter your username"
                   required
                   value={formData.username}
                   onChange={handleChange}
-                  className="w-full pl-11 pr-4 py-3.5 bg-gray-50/50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 focus:bg-white transition-all duration-300"
+                  className="w-full pb-2.5 pt-1 border-b border-slate-300 focus:border-emerald-600 text-sm sm:text-base font-semibold text-slate-900 placeholder:text-slate-300 focus:outline-none transition-colors bg-transparent"
                 />
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <label htmlFor="password" className="text-sm font-semibold text-gray-700 block">
-                Password
-              </label>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-purple-600 transition-colors">
-                  <i className="fas fa-lock"></i>
+              {/* Password Input with Clean Minimal Underline & Eye Icon */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-400 block">
+                  Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={visible ? "text" : "password"}
+                    name="password"
+                    placeholder="••••••••"
+                    required
+                    value={formData.password}
+                    onChange={handleChange}
+                    className="w-full pb-2.5 pt-1 pr-10 border-b border-slate-300 focus:border-emerald-600 text-sm sm:text-base font-semibold text-slate-900 placeholder:text-slate-300 focus:outline-none transition-colors bg-transparent tracking-widest"
+                  />
+                  <button
+                    type="button"
+                    onClick={togglePasswordVisibility}
+                    className="absolute inset-y-0 right-0 pr-1 flex items-center text-slate-400 hover:text-emerald-600 transition-colors cursor-pointer"
+                  >
+                    {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
-                <input
-                  id="password"
-                  name="password"
-                  type={visible ? "text" : "password"}
-                  placeholder="Enter your password"
-                  required
-                  value={formData.password}
-                  onChange={handleChange}
-                  className="w-full pl-11 pr-12 py-3.5 bg-gray-50/50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 focus:bg-white transition-all duration-300"
-                />
-                <button
-                  type="button"
-                  onClick={togglePasswordVisibility}
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-purple-600 transition-colors bg-transparent border-none outline-none focus:outline-none shadow-none"
-                  style={{ border: 'none', background: 'transparent' }}
-                >
-                  {visible ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
               </div>
-            </div>
 
-            <button
-              type="submit"
-              className="w-full mt-8 py-3.5 px-4 gradient-bg text-white rounded-xl font-semibold tracking-wide shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-70 disabled:cursor-not-allowed transition-all duration-300 transform hover:-translate-y-0.5 border-none outline-none"
-              style={{ border: 'none' }}
-              disabled={isLoginLoading || isDataLoading}
-            >
-              {isLoginLoading ? (
-                <span className="flex items-center justify-center">
-                  <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Logging in...
-                </span>
-              ) : isDataLoading ? (
-                <span className="flex items-center justify-center">
-                  <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Loading Data...
-                </span>
-              ) : (
-                "Sign In"
-              )}
-            </button>
-          </form>
-          </div>
-        </div>
-      </div>
-
-      {/* Toast Notification */}
-      {toast.show && (
-        <div className="fixed top-6 right-6 z-50 animate-fade-in-down">
-          <div className={`flex items-center gap-3 px-6 py-4 rounded-xl shadow-2xl backdrop-blur-sm border ${toast.type === "success"
-              ? "bg-green-50/90 border-green-200 text-green-800"
-              : "bg-red-50/90 border-red-200 text-red-800"
-            }`}>
-            {toast.type === "success" ? (
-              <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-green-100 text-green-600">
-                <i className="fas fa-check"></i>
-              </div>
-            ) : (
-              <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-red-100 text-red-600">
-                <i className="fas fa-exclamation"></i>
-              </div>
-            )}
-            <p className="font-medium">{toast.message}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Success Popup Modal */}
-      {showSuccessPopup && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/60 backdrop-blur-md animate-fade-in">
-          <style>{`
-            @keyframes successPop { 0% { opacity: 0; transform: scale(0.92) translateY(10px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
-            @keyframes checkRing { 0% { box-shadow: 0 0 0 0 rgba(147,51,234,0.35); } 70% { box-shadow: 0 0 0 16px rgba(147,51,234,0); } 100% { box-shadow: 0 0 0 0 rgba(147,51,234,0); } }
-            @keyframes successBorderSpin { to { transform: rotate(360deg); } }
-          `}</style>
-
-          <div
-            className="relative max-w-sm w-full mx-4 rounded-[1.75rem] p-[2px] overflow-hidden"
-            style={{ animation: "successPop 0.45s cubic-bezier(0.22,1,0.36,1) both" }}
-          >
-            {/* Running light border, matching the sign-in card */}
-            <div
-              aria-hidden="true"
-              className="absolute -inset-full motion-reduce:animate-none"
-              style={{
-                background:
-                  "conic-gradient(from 0deg, transparent 0deg, transparent 260deg, #9333EA 285deg, #DB2777 300deg, #9333EA 315deg, transparent 340deg, transparent 360deg)",
-                animation: "successBorderSpin 3s linear infinite",
-              }}
-            ></div>
-
-            <div
-              className="relative bg-white rounded-[1.7rem] p-8 text-center overflow-hidden"
-              style={{
-                boxShadow:
-                  "0 2px 0 rgba(255,255,255,0.7) inset, 0 40px 70px -28px rgba(88,28,135,0.35), 0 16px 30px -14px rgba(219,39,119,0.25)",
-              }}
-            >
-              {/* Decorative background glow */}
-              <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -mt-10 w-40 h-40 bg-purple-400 rounded-full blur-3xl opacity-20"></div>
-
-              <div
-                className="mx-auto flex items-center justify-center h-20 w-20 rounded-full bg-gradient-to-br from-purple-50 to-pink-100 border-4 border-white mb-6 relative z-10"
-                style={{
-                  animation: "checkRing 2s ease-out infinite",
-                  boxShadow: "0 8px 20px -8px rgba(147,51,234,0.5)",
-                }}
+              {/* Primary Emerald Button (Exact reference style) */}
+              <motion.button
+                type="submit"
+                disabled={isLoginLoading || isDataLoading}
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
+                className="w-full mt-4 py-3.5 px-6 bg-[#10b981] hover:bg-[#059669] text-white rounded-xl font-bold text-sm sm:text-base tracking-wide shadow-md shadow-emerald-500/20 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
               >
-                <svg className="h-10 w-10 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
-                </svg>
+                {isLoginLoading ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span>Verifying Credentials...</span>
+                  </>
+                ) : isDataLoading ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span>Connecting to Directory...</span>
+                  </>
+                ) : (
+                  <span>Sign Up / Sign In</span>
+                )}
+              </motion.button>
+            </form>
+
+            {/* Bottom "Or sign up with" social circles (Exact reference style) */}
+            <div className="pt-2">
+              <div className="relative flex py-2 items-center">
+                <div className="flex-grow border-t border-slate-100"></div>
+                <span className="flex-shrink mx-4 text-xs font-semibold text-slate-400">Or sign up with</span>
+                <div className="flex-grow border-t border-slate-100"></div>
               </div>
 
-              <h3 className="text-2xl font-bold text-gray-900 mb-2 relative z-10 tracking-tight">
-                Login Successful!
-              </h3>
-
-              <p className="text-gray-600 text-base mb-8 relative z-10">
-                Welcome back, <span className="font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">{loggedInUsername}</span>! We're redirecting you to your dashboard.
-              </p>
-
-              <div className="flex flex-col items-center justify-center relative z-10">
-                <div className="relative h-9 w-9">
-                  <div className="absolute inset-0 rounded-full border-2 border-purple-100"></div>
-                  <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-purple-600 border-r-pink-600 animate-spin"></div>
-                </div>
-                <p className="text-xs text-gray-400 mt-3 font-semibold uppercase tracking-[0.2em]">
-                  Redirecting
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* What's New / Update Popup */}
-      {showUpdatePopup && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-3xl p-8 max-w-lg w-full mx-4 shadow-2xl transform transition-all duration-300 scale-100 opacity-100 relative max-h-[92vh] overflow-y-auto">
-            {/* Decorative background glow */}
-            <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -mt-10 w-32 h-32 bg-purple-400 rounded-full blur-3xl opacity-20"></div>
-
-            {/* Cross / Close button */}
-            <button
-              type="button"
-              onClick={handleCloseUpdatePopup}
-              aria-label="Close"
-              className="absolute top-4 right-4 z-20 flex items-center justify-center h-9 w-9 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors bg-transparent border-none outline-none focus:outline-none"
-              style={{ border: 'none' }}
-            >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-
-            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-2xl bg-purple-50 border border-purple-100 mb-4 relative z-10">
-              <i className="fas fa-bullhorn text-2xl text-purple-600"></i>
-            </div>
-
-            <h3 className="text-2xl font-bold text-gray-900 mb-1 text-center relative z-10">
-              New Update
-            </h3>
-            <p className="text-sm text-gray-500 mb-6 text-center relative z-10">
-              नया अपडेट
-            </p>
-
-            <ul className="space-y-3 relative z-10">
-              <li className="flex items-start gap-3">
-                <span className="flex-shrink-0 flex items-center justify-center h-7 w-7 rounded-full bg-purple-100 text-purple-600 text-sm font-bold">1</span>
-                <div>
-                  <p className="text-gray-800 font-medium">अब से आप फाइल अपलोड कर सकते हैं।</p>
-                  <p className="text-gray-500 text-sm">You can now upload a file.</p>
-                </div>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="flex-shrink-0 flex items-center justify-center h-7 w-7 rounded-full bg-purple-100 text-purple-600 text-sm font-bold">2</span>
-                <div>
-                  <p className="text-gray-800 font-medium">अब से आप एक साथ कई इमेज अपलोड कर सकते हैं।</p>
-                  <p className="text-gray-500 text-sm">You can now upload multiple images.</p>
-                </div>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="flex-shrink-0 flex items-center justify-center h-7 w-7 rounded-full bg-purple-100 text-purple-600 text-sm font-bold">3</span>
-                <div>
-                  <p className="text-gray-800 font-medium">अब से आप सीधे कैमरा से फोटो अपलोड कर सकते हैं।</p>
-                  <p className="text-gray-500 text-sm">You can now upload a photo directly from the camera.</p>
-                </div>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="flex-shrink-0 flex items-center justify-center h-7 w-7 rounded-full bg-purple-100 text-purple-600 text-sm font-bold">4</span>
-                <div>
-                  <p className="text-gray-800 font-medium">अब से आप स्क्रीनशॉट लेकर सीधे Paste बटन से इमेज पेस्ट कर सकते हैं।</p>
-                  <p className="text-gray-500 text-sm">You can now take a screenshot and directly paste it as an image using the Paste button.</p>
-                </div>
-              </li>
-            </ul>
-
-            {/* Tutorial: screenshot-style mockup showing where to upload */}
-            <div className="relative z-10 mt-6">
-              <p className="text-sm font-semibold text-gray-700">कैसे अपलोड करें? / How to upload?</p>
-              <p className="text-xs text-gray-500 mt-0.5 mb-3">
-                टास्क टेबल में <span className="font-semibold text-purple-600">Upload</span> बटन पर क्लिक करें।
-                / Click the highlighted <span className="font-semibold text-purple-600">Upload</span> button in the tasks table.
-              </p>
-
-              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3 shadow-inner">
-                {/* Fake browser/app top bar to look like a screenshot */}
-                <div className="flex items-center gap-1.5 px-1 pb-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-red-400"></span>
-                  <span className="h-2.5 w-2.5 rounded-full bg-yellow-400"></span>
-                  <span className="h-2.5 w-2.5 rounded-full bg-green-400"></span>
-                  <span className="ml-2 text-[10px] text-gray-400 font-medium">Checklist Tasks</span>
-                </div>
-
-                {/* Fake table */}
-                <div className="rounded-lg overflow-hidden border border-gray-200 bg-white text-[11px]">
-                  <div className="grid grid-cols-3 bg-gray-100 text-gray-500 font-semibold uppercase tracking-wide">
-                    <div className="px-3 py-2">Task</div>
-                    <div className="px-3 py-2">Status</div>
-                    <div className="px-3 py-2">Upload Image</div>
-                  </div>
-                  <div className="grid grid-cols-3 items-center border-t border-gray-100">
-                    <div className="px-3 py-3 text-gray-700">Daily Report</div>
-                    <div className="px-3 py-3 text-gray-700">Yes</div>
-                    <div className="px-2 py-3 bg-green-50 relative">
-                      {/* Highlighted Upload button */}
-                      <span className="relative inline-flex">
-                        <span className="absolute -inset-1.5 rounded-lg ring-2 ring-purple-500 animate-pulse"></span>
-                        <span className="relative inline-flex items-center gap-1 rounded-md bg-white border border-purple-300 px-2 py-1 text-purple-700 font-semibold shadow-sm">
-                          <i className="fas fa-upload"></i> Upload
-                        </span>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Arrow + callout pointing up to the Upload button */}
-                <div className="flex items-start justify-end gap-2 mt-1.5 pr-3">
-                  <div className="text-right pt-1">
-                    <p className="text-[11px] font-bold text-purple-700">यहाँ से अपलोड करें</p>
-                    <p className="text-[10px] text-gray-500">Tap here to upload</p>
-                  </div>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-9 w-9 text-purple-600 animate-bounce">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5M5 12l7-7 7 7" />
+              <div className="flex items-center justify-center gap-3 pt-2">
+                
+                {/* Google Icon Circle */}
+                <motion.div 
+                  whileHover={{ scale: 1.08 }}
+                  className="w-10 h-10 rounded-full border border-slate-100 shadow-sm flex items-center justify-center bg-white cursor-pointer"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24">
+                    <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"/>
+                    <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.7-.2-2.3H12v4.6h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.9z"/>
+                    <path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.8s.2-2.1.4-2.8L1.9 6.3C.7 8.7 0 10.8 0 12s.7 3.3 1.9 5.7l3.7-2.9z"/>
+                    <path fill="#34A853" d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.2L1.9 16C3.7 19.7 7.5 23 12 23z"/>
                   </svg>
-                </div>
+                </motion.div>
 
-                {/* Options that appear on tapping Upload — each one individually highlighted with its own arrow + caption */}
-                <div className="grid grid-cols-3 gap-2 mt-3">
-                  <div className="flex flex-col items-center text-center">
-                    <p className="text-[9px] font-bold text-purple-700 leading-tight">फोटो खींचें</p>
-                    <p className="text-[8px] text-gray-500 leading-tight mb-0.5">Take photo</p>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="h-4 w-4 text-purple-500 animate-bounce">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5M5 12l7-7 7 7" />
-                    </svg>
-                    <div className="mt-0.5 flex flex-col items-center justify-center rounded-lg bg-white border-2 border-purple-400 py-2 px-1 w-full">
-                      <i className="fas fa-camera text-purple-500 text-base mb-1"></i>
-                      <span className="text-[10px] font-medium text-gray-700 leading-tight">कैमरा<br />Camera</span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-center text-center">
-                    <p className="text-[9px] font-bold text-purple-700 leading-tight">गैलरी से चुनें</p>
-                    <p className="text-[8px] text-gray-500 leading-tight mb-0.5">Choose from gallery</p>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="h-4 w-4 text-purple-500 animate-bounce">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5M5 12l7-7 7 7" />
-                    </svg>
-                    <div className="mt-0.5 flex flex-col items-center justify-center rounded-lg bg-white border-2 border-purple-400 py-2 px-1 w-full">
-                      <i className="fas fa-images text-purple-500 text-base mb-1"></i>
-                      <span className="text-[10px] font-medium text-gray-700 leading-tight">कई इमेज<br />Gallery</span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-center text-center">
-                    <p className="text-[9px] font-bold text-purple-700 leading-tight">स्क्रीनशॉट पेस्ट करें</p>
-                    <p className="text-[8px] text-gray-500 leading-tight mb-0.5">Paste screenshot</p>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="h-4 w-4 text-purple-500 animate-bounce">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5M5 12l7-7 7 7" />
-                    </svg>
-                    <div className="mt-0.5 flex flex-col items-center justify-center rounded-lg bg-white border-2 border-purple-400 py-2 px-1 w-full">
-                      <i className="fas fa-clipboard text-purple-500 text-base mb-1"></i>
-                      <span className="text-[10px] font-medium text-gray-700 leading-tight">पेस्ट<br />Paste</span>
-                    </div>
-                  </div>
-                </div>
-                <p className="text-[10px] text-gray-500 mt-2 text-center">
-                  स्क्रीनशॉट पहले कॉपी करें, फिर <span className="font-semibold text-purple-600">Paste</span> पर क्लिक करें।
-                  / Copy a screenshot first, then click <span className="font-semibold text-purple-600">Paste</span> to attach it directly.
-                </p>
+                {/* Twitter Icon Circle */}
+                <motion.div 
+                  whileHover={{ scale: 1.08 }}
+                  className="w-10 h-10 rounded-full border border-slate-100 shadow-sm flex items-center justify-center bg-white cursor-pointer text-sky-400"
+                >
+                  <svg className="h-4 w-4 fill-current" viewBox="0 0 24 24">
+                    <path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"></path>
+                  </svg>
+                </motion.div>
+
+                {/* Facebook Icon Circle */}
+                <motion.div 
+                  whileHover={{ scale: 1.08 }}
+                  className="w-10 h-10 rounded-full border border-slate-100 shadow-sm flex items-center justify-center bg-white cursor-pointer text-blue-600"
+                >
+                  <svg className="h-4 w-4 fill-current" viewBox="0 0 24 24">
+                    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"></path>
+                  </svg>
+                </motion.div>
+
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleCloseUpdatePopup}
-              className="w-full mt-8 py-3 px-4 gradient-bg text-white rounded-xl font-semibold tracking-wide shadow-md hover:shadow-lg focus:outline-none transition-all duration-300 relative z-10 border-none"
-              style={{ border: 'none' }}
-            >
-              Got it / समझ गया
-            </button>
           </div>
+
         </div>
-      )}
+
+      </motion.div>
+
+      {/* ========================================================================= */}
+      {/* Toast Notification with AnimatePresence                                  */}
+      {/* ========================================================================= */}
+      <AnimatePresence>
+        {toast.show && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            transition={{ duration: 0.3 }}
+            className="fixed top-6 right-6 z-50"
+          >
+            <div className={`flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-2xl backdrop-blur-md border text-xs font-semibold ${
+              toast.type === "success"
+                ? "bg-emerald-950/95 border-emerald-500/40 text-emerald-200"
+                : "bg-rose-950/95 border-rose-500/40 text-rose-200"
+            }`}>
+              {toast.type === "success" ? (
+                <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+              ) : (
+                <ShieldCheck className="h-4 w-4 text-rose-400 shrink-0" />
+              )}
+              <p>{toast.message}</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ========================================================================= */}
+      {/* Success Modal Popup with AnimatePresence                                  */}
+      {/* ========================================================================= */}
+      <AnimatePresence>
+        {showSuccessPopup && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 flex items-center justify-center z-50 bg-slate-950/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="relative max-w-sm w-full mx-4 bg-white rounded-3xl p-8 text-center shadow-2xl border border-slate-100"
+            >
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-2xl bg-emerald-100 text-emerald-700 mb-4 shadow-inner">
+                <CheckCircle2 className="h-8 w-8" />
+              </div>
+              <h3 className="text-xl font-black text-slate-900 mb-1">
+                Authentication Approved
+              </h3>
+              <p className="text-xs text-slate-500 font-medium">
+                Welcome, <strong className="text-emerald-700 font-bold">{loggedInUsername}</strong>. Redirecting to Dashboard...
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 };

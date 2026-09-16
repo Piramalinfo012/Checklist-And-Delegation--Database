@@ -2545,72 +2545,98 @@ export default function AdminSettings() {
           <div className="space-y-6">
             
             {/* 🌙 Nightly Cloud Cron Generator Card */}
-            <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-purple-950 text-white border border-indigo-500/30 rounded-3xl p-6 shadow-xl space-y-4 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
-              
-              <div className="flex items-center justify-between border-b border-indigo-800/60 pb-3">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-indigo-600/80 text-white shadow-lg shadow-indigo-500/30">
-                    <Moon className="h-5 w-5 text-amber-300" />
+            <div className="relative overflow-hidden rounded-[28px] p-[1px] bg-gradient-to-br from-indigo-400/40 via-purple-500/20 to-transparent shadow-2xl shadow-indigo-950/40">
+              <div className="relative rounded-[27px] bg-gradient-to-br from-slate-950 via-indigo-950 to-purple-950/90 text-white p-6 space-y-5 overflow-hidden">
+                {/* Ambient glow accents */}
+                <div className="absolute -top-16 -right-10 w-48 h-48 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
+                <div className="absolute -bottom-20 -left-12 w-52 h-52 bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
+                <div className="absolute inset-0 opacity-[0.15] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.4) 1px, transparent 0)', backgroundSize: '22px 22px' }} />
+
+                {/* Header */}
+                <div className="relative flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="relative p-3 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-amber-300 shadow-lg shadow-indigo-500/40">
+                      <Moon className="h-5 w-5" />
+                      <span className="absolute inset-0 rounded-2xl ring-1 ring-white/20" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-white tracking-tight">Cloud Task Generator</h3>
+                      <p className="text-[11px] text-indigo-300/90 font-medium">Serverless Google Cloud Cron</p>
+                    </div>
                   </div>
+                  <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 text-[10px] font-bold border border-emerald-400/30 shadow-sm shadow-emerald-500/20">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
+                    </span>
+                    Active
+                  </span>
+                </div>
+
+                {/* Countdown widget */}
+                <div className="relative rounded-2xl bg-black/30 border border-white/10 backdrop-blur-sm p-4 flex items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
-                      <span>Cloud Task Generator</span>
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-semibold border border-emerald-500/30">
-                        Active
-                      </span>
-                    </h3>
-                    <p className="text-[11px] text-indigo-300">Serverless Google Cloud Cron</p>
+                    <span className="text-slate-400 block text-[10px] uppercase tracking-[0.15em] font-bold">Time to Next Trigger</span>
+                    <span className="font-bold text-white text-sm mt-0.5 block">{formatHourLabel(nightlyTriggerHour)}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 font-mono">
+                    {[
+                      { v: countdown.hours, l: 'HRS' },
+                      { v: countdown.minutes, l: 'MIN' },
+                      { v: countdown.seconds, l: 'SEC' },
+                    ].map((seg, i) => (
+                      <React.Fragment key={seg.l}>
+                        {i > 0 && <span className="text-amber-300/60 font-black text-lg pb-3">:</span>}
+                        <div className="flex flex-col items-center">
+                          <span className="text-lg font-black text-amber-300 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-white/10 shadow-inner min-w-[2.4rem] text-center tabular-nums">
+                            {String(seg.v).padStart(2, '0')}
+                          </span>
+                          <span className="text-[8px] text-slate-500 font-bold tracking-wider mt-1">{seg.l}</span>
+                        </div>
+                      </React.Fragment>
+                    ))}
                   </div>
                 </div>
-              </div>
 
-              {/* Countdown mini widget */}
-              <div className="p-3 bg-black/40 rounded-2xl border border-indigo-500/30 flex items-center justify-between">
-                <div className="text-xs">
-                  <span className="text-slate-400 block text-[10px] uppercase tracking-wider font-semibold">Time to Next Trigger</span>
-                  <span className="font-bold text-white text-xs">{formatHourLabel(nightlyTriggerHour)}</span>
+                {/* Description */}
+                <div className="relative space-y-2.5 text-xs leading-relaxed">
+                  <div className="flex items-center gap-2 text-slate-200">
+                    <span className="text-amber-300">🕒</span>
+                    <span><strong className="text-white font-semibold">Schedule:</strong> Every day at <span className="text-amber-300 font-bold">{formatHourLabel(nightlyTriggerHour)}</span></span>
+                  </div>
+                  <p className="text-[11px] text-slate-400/90 leading-relaxed">
+                    Google Apps Script automatically evaluates the <span className="text-indigo-300 font-semibold">Working Calendar</span> &amp; <span className="text-indigo-300 font-semibold">Unique Templates</span> and inserts the new day's tasks directly into Supabase &amp; Sheets without needing any browser open.
+                  </p>
                 </div>
-                <div className="font-mono text-sm font-black text-amber-300 bg-slate-800/90 px-3 py-1 rounded-xl border border-slate-700">
-                  {countdown.hours}h : {countdown.minutes}m : {countdown.seconds}s
+
+                {nightlyTriggerStatus && (
+                  <div className="relative p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-400/30 text-emerald-300 text-xs flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0" />
+                    <span>{nightlyTriggerStatus}</span>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="relative pt-1 flex flex-col sm:flex-row gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => handleSetupNightlyTrigger(selectedTimingHour)}
+                    disabled={isSettingUpNightlyTrigger}
+                    className="flex-1 flex items-center justify-center gap-2 px-3.5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-50 ring-1 ring-white/10"
+                  >
+                    <Zap className={`h-3.5 w-3.5 ${isSettingUpNightlyTrigger ? 'animate-spin' : ''}`} />
+                    <span>{isSettingUpNightlyTrigger ? 'Configuring Cloud...' : '🌙 Refresh Cloud Trigger'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRunNightlyCloudTest}
+                    disabled={isRunningNightlyTest}
+                    className="flex items-center justify-center gap-2 px-3.5 py-2.5 bg-white/5 hover:bg-white/15 text-white text-xs font-semibold rounded-xl border border-white/15 backdrop-blur-sm transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    <Play className={`h-3.5 w-3.5 fill-current ${isRunningNightlyTest ? 'animate-spin' : ''}`} />
+                    <span>{isRunningNightlyTest ? 'Testing...' : 'Test Cloud Run'}</span>
+                  </button>
                 </div>
-              </div>
-
-              <div className="space-y-2 text-xs text-slate-300 leading-relaxed">
-                <p>
-                  <strong className="text-white">🕒 Schedule:</strong> Every day at <span className="text-amber-300 font-bold">{formatHourLabel(nightlyTriggerHour)}</span>.
-                </p>
-                <p className="text-[11px] text-slate-400">
-                  Google Apps Script automatically evaluates the <span className="text-indigo-300 font-semibold">Working Calendar</span> &amp; <span className="text-indigo-300 font-semibold">Unique Templates</span> and inserts the new day's tasks directly into Supabase &amp; Sheets without needing any browser open.
-                </p>
-              </div>
-
-              {nightlyTriggerStatus && (
-                <div className="p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0" />
-                  <span>{nightlyTriggerStatus}</span>
-                </div>
-              )}
-
-              <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => handleSetupNightlyTrigger(selectedTimingHour)}
-                  disabled={isSettingUpNightlyTrigger}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-50"
-                >
-                  <Zap className={`h-3.5 w-3.5 ${isSettingUpNightlyTrigger ? 'animate-spin' : ''}`} />
-                  <span>{isSettingUpNightlyTrigger ? 'Configuring Cloud...' : '🌙 Refresh Cloud Trigger'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRunNightlyCloudTest}
-                  disabled={isRunningNightlyTest}
-                  className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold rounded-xl border border-white/10 transition-all active:scale-95 disabled:opacity-50"
-                >
-                  <Play className={`h-3.5 w-3.5 fill-current ${isRunningNightlyTest ? 'animate-spin' : ''}`} />
-                  <span>{isRunningNightlyTest ? 'Testing...' : 'Test Cloud Run'}</span>
-                </button>
               </div>
             </div>
 
