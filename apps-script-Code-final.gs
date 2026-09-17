@@ -1141,10 +1141,12 @@ function processChecklistAndGenerateTasks() {
           });
         }
 
-        // Update Last Date in Supabase Unique table
+        // Update Last Date in Supabase Unique table using parallel UrlFetchApp.fetchAll
+        var requests = [];
         templateUpdates.forEach(function(u) {
           if (u.taskId) {
-            UrlFetchApp.fetch(SUPABASE_URL + "/rest/v1/Unique?Task%20ID=eq." + encodeURIComponent(u.taskId), {
+            requests.push({
+              url: SUPABASE_URL + "/rest/v1/Unique?Task%20ID=eq." + encodeURIComponent(u.taskId),
               method: "patch",
               headers: {
                 "apikey": SUPABASE_KEY,
@@ -1156,6 +1158,11 @@ function processChecklistAndGenerateTasks() {
             });
           }
         });
+
+        for (var r = 0; r < requests.length; r += 30) {
+          var reqChunk = requests.slice(r, r + 30);
+          UrlFetchApp.fetchAll(reqChunk);
+        }
       } catch (sbErr) {
         console.warn("Supabase direct REST push warning:", sbErr);
       }

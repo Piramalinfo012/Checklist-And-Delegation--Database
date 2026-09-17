@@ -377,56 +377,78 @@ export default function AdminDashboard() {
   };
 
   // Format date as DD/MM/YYYY
+  // Format date as DD/MM/YYYY
   const formatDateToDDMMYYYY = (date) => {
+    if (!date || isNaN(date.getTime())) return ''
     const day = date.getDate().toString().padStart(2, '0')
     const month = (date.getMonth() + 1).toString().padStart(2, '0')
     const year = date.getFullYear()
     return `${day}/${month}/${year}`
   }
 
-  // Parse DD/MM/YYYY to Date object
+  // Parse DD/MM/YYYY or DD-MM-YYYY or YYYY-MM-DD or date with time to Date object
   const parseDateFromDDMMYYYY = (dateStr) => {
     if (!dateStr || typeof dateStr !== 'string') return null
-    const parts = dateStr.split('/')
+    const cleanStr = dateStr.trim()
+    const datePart = cleanStr.includes(' ') ? cleanStr.split(' ')[0] : (cleanStr.includes('T') ? cleanStr.split('T')[0] : cleanStr)
+    const delimiter = datePart.includes('-') ? '-' : '/'
+    const parts = datePart.split(delimiter)
     if (parts.length !== 3) return null
-    return new Date(parts[2], parts[1] - 1, parts[0])
+    if (parts[0].length === 4) {
+      // YYYY-MM-DD
+      const year = parseInt(parts[0], 10)
+      const month = parseInt(parts[1], 10) - 1
+      const day = parseInt(parts[2], 10)
+      const d = new Date(year, month, day)
+      return isNaN(d.getTime()) ? null : d
+    }
+    // DD/MM/YYYY or DD-MM-YYYY
+    const day = parseInt(parts[0], 10)
+    const month = parseInt(parts[1], 10) - 1
+    const year = parseInt(parts[2], 10)
+    const d = new Date(year, month, day)
+    return isNaN(d.getTime()) ? null : d
   }
 
-  // Function to check if a date is in the past
+  // Function to check if a date is in the past (excluding today)
   const isDateInPast = (dateStr) => {
     const date = parseDateFromDDMMYYYY(dateStr)
-    if (!date) return false
+    if (!date || isNaN(date.getTime())) return false
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    return date < today
+    date.setHours(0, 0, 0, 0)
+    return date.getTime() < today.getTime()
   }
 
   // Function to check if a date is today
   const isDateToday = (dateStr) => {
     const date = parseDateFromDDMMYYYY(dateStr)
-    if (!date) return false
+    if (!date || isNaN(date.getTime())) return false
     const today = new Date()
     today.setHours(0, 0, 0, 0)
+    date.setHours(0, 0, 0, 0)
     return date.getTime() === today.getTime()
   }
 
   // Function to check if a date is tomorrow
   const isDateTomorrow = (dateStr) => {
     const date = parseDateFromDDMMYYYY(dateStr)
-    if (!date) return false
+    if (!date || isNaN(date.getTime())) return false
     const tomorrow = new Date()
     tomorrow.setDate(tomorrow.getDate() + 1)
     tomorrow.setHours(0, 0, 0, 0)
+    date.setHours(0, 0, 0, 0)
     return date.getTime() === tomorrow.getTime()
   }
 
   // Function to check if a date is in the future (from tomorrow onwards)
   const isDateFuture = (dateStr) => {
     const date = parseDateFromDDMMYYYY(dateStr)
-    if (!date) return false
+    if (!date || isNaN(date.getTime())) return false
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    return date > today
+    date.setHours(0, 0, 0, 0)
+    return date.getTime() > today.getTime()
   }
 
   // Safe access to cell value
@@ -440,9 +462,6 @@ export default function AdminDashboard() {
   const parseGoogleSheetsDate = (dateStr) => {
     if (!dateStr) return ''
 
-    // Debug log for date parsing
-    //console.log(`Parsing date: "${dateStr}" (type: ${typeof dateStr})`);
-
     if (typeof dateStr === 'string' && dateStr.startsWith('Date(')) {
       // Handle Google Sheets Date(year,month,day) format
       const match = /Date\((\d+),(\d+),(\d+)\)/.exec(dateStr)
@@ -452,45 +471,46 @@ export default function AdminDashboard() {
         const day = parseInt(match[3], 10)
 
         // Format as DD/MM/YYYY
-        const formatted = `${day.toString().padStart(2, '0')}/${(month + 1).toString().padStart(2, '0')}/${year}`;
-        //console.log(`Converted Google Sheets date to: ${formatted}`);
-        return formatted;
+        return `${day.toString().padStart(2, '0')}/${(month + 1).toString().padStart(2, '0')}/${year}`;
       }
     }
 
-    // If it's already in DD/MM/YYYY format, return as is
-    if (typeof dateStr === 'string' && dateStr.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) {
-      // Normalize to DD/MM/YYYY format
-      const parts = dateStr.split('/');
-      const day = parts[0].padStart(2, '0');
-      const month = parts[1].padStart(2, '0');
-      const year = parts[2];
-      const normalized = `${day}/${month}/${year}`;
-      //console.log(`Normalized date to: ${normalized}`);
-      return normalized;
+    // If it contains a date in DD/MM/YYYY format
+    if (typeof dateStr === 'string') {
+      const cleanStr = dateStr.trim();
+      const datePart = cleanStr.includes(' ') ? cleanStr.split(' ')[0] : (cleanStr.includes('T') ? cleanStr.split('T')[0] : cleanStr);
+      if (datePart.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) {
+        const parts = datePart.split('/');
+        const day = parts[0].padStart(2, '0');
+        const month = parts[1].padStart(2, '0');
+        const year = parts[2];
+        return `${day}/${month}/${year}`;
+      }
+      if (datePart.match(/^\d{4}-\d{1,2}-\d{1,2}$/)) {
+        const parts = datePart.split('-');
+        const year = parts[0];
+        const month = parts[1].padStart(2, '0');
+        const day = parts[2].padStart(2, '0');
+        return `${day}/${month}/${year}`;
+      }
     }
 
     // Handle Date objects
     if (dateStr instanceof Date && !isNaN(dateStr.getTime())) {
-      const formatted = formatDateToDDMMYYYY(dateStr);
-      //console.log(`Converted Date object to: ${formatted}`);
-      return formatted;
+      return formatDateToDDMMYYYY(dateStr);
     }
 
     // If we get here, try to parse as a date and format
     try {
       const date = new Date(dateStr)
       if (!isNaN(date.getTime())) {
-        const formatted = formatDateToDDMMYYYY(date);
-        //console.log(`Parsed generic date to: ${formatted}`);
-        return formatted;
+        return formatDateToDDMMYYYY(date);
       }
     } catch (e) {
       console.error("Error parsing date:", e)
     }
 
     // Return original if parsing fails
-    //console.log(`Failed to parse date, returning original: ${dateStr}`);
     return dateStr
   }
 
@@ -502,6 +522,16 @@ export default function AdminDashboard() {
 
     try {
       let supabaseRows = [];
+      let whatsappUsers = [];
+
+      // Always fetch whatsapp users list so all staff members show in filters
+      try {
+        const { data: uData } = await supabase.from('Whatsapp').select('*');
+        if (uData) whatsappUsers = uData;
+      } catch (uErr) {
+        console.warn('Error fetching whatsapp users:', uErr);
+      }
+
       if (isDelegation) {
         let query = supabase.from('Delegation').select('*');
         if (userRole !== "admin" && username) {
@@ -530,14 +560,59 @@ export default function AdminDashboard() {
           ]
         }));
       } else {
-        let query = supabase.from('Checklist').select('*');
-        if (userRole !== "admin" && username) {
-          query = query.ilike('Name', username.trim());
-        }
-        const { data: cData, error: cError } = await query.order('Task ID', { ascending: false }).limit(2500);
-        if (cError) throw cError;
+        // For CHECKLIST: Fetch all pending/incomplete tasks in parallel (up to 7000)
+        // so that past overdue tasks from previous dates are NOT cut off by the 1000-row limit
+        const batchSize = 1000;
+        const pendingPromises = [];
+        const isUserScoped = userRole !== "admin" && username;
 
-        supabaseRows = (cData || []).map(r => ({
+        if (isUserScoped) {
+          pendingPromises.push(
+            supabase.from('Checklist')
+              .select('*')
+              .is('Actual', null)
+              .ilike('Name', username.trim())
+              .order('Task ID', { ascending: false })
+              .limit(2000)
+          );
+        } else {
+          for (let i = 0; i < 7; i++) {
+            pendingPromises.push(
+              supabase.from('Checklist')
+                .select('*')
+                .is('Actual', null)
+                .order('Task ID', { ascending: false })
+                .range(i * batchSize, (i + 1) * batchSize - 1)
+            );
+          }
+        }
+
+        let completedQuery = supabase.from('Checklist')
+          .select('*')
+          .not('Actual', 'is', null)
+          .order('Task ID', { ascending: false })
+          .limit(1000);
+
+        if (isUserScoped) {
+          completedQuery = completedQuery.ilike('Name', username.trim());
+        }
+
+        const [pendingResults, completedResult] = await Promise.all([
+          Promise.all(pendingPromises),
+          completedQuery
+        ]);
+
+        let allPendingRows = [];
+        pendingResults.forEach(res => {
+          if (res && res.data) {
+            allPendingRows.push(...res.data);
+          }
+        });
+
+        const allCompletedRows = (completedResult && completedResult.data) || [];
+        const combinedChecklistData = [...allPendingRows, ...allCompletedRows];
+
+        supabaseRows = combinedChecklistData.map(r => ({
           c: [
             { v: r['Timestamp'] || '' },
             { v: r['Task ID'] || '' },
@@ -589,6 +664,21 @@ export default function AdminDashboard() {
 
       const statusData = { Completed: 0, Pending: 0, Overdue: 0 };
       const staffTrackingMap = new Map();
+
+      if (Array.isArray(whatsappUsers)) {
+        whatsappUsers.forEach(u => {
+          const name = (u['User name'] || u.Username || u.name || '').trim();
+          if (name && !name.startsWith('DELETED_')) {
+            staffTrackingMap.set(name, {
+              name,
+              totalTasks: 0,
+              completedTasks: 0,
+              pendingTasks: 0,
+              progress: 0,
+            });
+          }
+        });
+      }
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);

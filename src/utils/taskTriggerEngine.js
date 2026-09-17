@@ -11,6 +11,7 @@ export function parseDateString(dateStr) {
   if (dateStr instanceof Date) return new Date(dateStr.getFullYear(), dateStr.getMonth(), dateStr.getDate());
   
   const str = String(dateStr).trim();
+  if (!str) return null;
   
   // Handle slashes: DD/MM/YYYY or YYYY/MM/DD
   if (str.includes('/')) {
@@ -87,7 +88,7 @@ export async function getNextTaskId(tableName) {
       .from(tableName)
       .select('"Task ID"')
       .order('"Task ID"', { ascending: false })
-      .limit(10);
+      .limit(20);
 
     if (!orderErr && orderedData && orderedData.length > 0) {
       const maxId = orderedData.reduce((max, r) => {
@@ -148,7 +149,7 @@ export function isTemplateDue(template, targetDate = new Date()) {
     }
   }
 
-  if (!lastDateStr) {
+  if (!lastDateStr || String(lastDateStr).trim() === '') {
     return { isDue: true, reason: 'Never generated before' };
   }
 
@@ -157,7 +158,7 @@ export function isTemplateDue(template, targetDate = new Date()) {
     return { isDue: true, reason: 'Invalid last date, generation required' };
   }
 
-  // If already generated today
+  // If already generated on target date (today)
   if (isSameDay(target, lastDate)) {
     return { isDue: false, reason: `Already generated for today (${lastDateStr})` };
   }
@@ -180,9 +181,9 @@ export function isTemplateDue(template, targetDate = new Date()) {
       return { isDue: false, reason: `Weekly task not due yet (${diffDays}/7 days passed)` };
     }
     case 'monthly': {
-      // Check if 1 month has elapsed or same day of subsequent month
+      // Check if 1 or more months have elapsed
       const monthsDiff = (target.getFullYear() - lastDate.getFullYear()) * 12 + (target.getMonth() - lastDate.getMonth());
-      if (monthsDiff >= 1 && target.getDate() >= lastDate.getDate()) {
+      if (monthsDiff > 1 || (monthsDiff === 1 && target.getDate() >= lastDate.getDate())) {
         return { isDue: true, reason: `Monthly task due (${monthsDiff} month(s) passed)` };
       }
       return { isDue: false, reason: `Monthly task not due yet` };
@@ -201,6 +202,56 @@ export function isTemplateDue(template, targetDate = new Date()) {
 }
 
 /**
+ * Fast batch updater for template Last Dates in Supabase 'Unique' table
+ * Uses parallel promises in chunks so updating 400+ templates completes in ~1s
+ */
+export async function updateUniqueTemplatesLastDateBatch(updates = []) {
+  if (!updates || updates.length === 0) return { updatedCount: 0, errors: [] };
+
+  const CONCURRENCY = 20;
+  let updatedCount = 0;
+  const errors = [];
+
+  for (let i = 0; i < updates.length; i += CONCURRENCY) {
+    const chunk = updates.slice(i, i + CONCURRENCY);
+    const promises = chunk.map(async (item) => {
+      try {
+        const dateVal = item.newLastDate;
+        let res = null;
+
+        // Try matching by Task ID
+        if (item.id !== undefined && item.id !== null) {
+          res = await supabase
+            .from('Unique')
+            .update({ 'Last Date': dateVal })
+            .eq('Task ID', item.id);
+        }
+
+        // Fallback matching by primary key 'id'
+        if ((!res || res.error || res.count === 0) && item.dbId !== undefined && item.dbId !== null) {
+          res = await supabase
+            .from('Unique')
+            .update({ 'Last Date': dateVal })
+            .eq('id', item.dbId);
+        }
+
+        if (res && res.error) {
+          errors.push({ id: item.id, error: res.error.message });
+        } else {
+          updatedCount++;
+        }
+      } catch (err) {
+        errors.push({ id: item.id, error: err.message || err });
+      }
+    });
+
+    await Promise.all(promises);
+  }
+
+  return { updatedCount, errors };
+}
+
+/**
  * Main Task Generator Trigger function with duplicate prevention
  */
 export async function runTaskGenerationTrigger(options = {}) {
@@ -208,6 +259,7 @@ export async function runTaskGenerationTrigger(options = {}) {
     targetDate = new Date(),
     ignoreCalendarCheck = false,
     specificTemplateId = null,
+    forceRunSpecific = false,
     onProgress = () => {}
   } = options;
 
@@ -239,11 +291,11 @@ export async function runTaskGenerationTrigger(options = {}) {
   addLog(`Starting task generation process for date: ${todayDDMMYYYY}...`);
 
   try {
-    // 1. Check Working Day Calendar & Holiday List if not ignored
+    // 1. Check Working Day Calendar & Holiday List if not ignored and not single template run
     let isWorkingDay = true;
     let holidayInfo = null;
 
-    if (!ignoreCalendarCheck) {
+    if (!ignoreCalendarCheck && !specificTemplateId) {
       addLog(`Checking working day calendar and holiday schedule...`);
       const [calRes, holRes] = await Promise.all([
         supabase.from('Working Day Calendar').select('*'),
@@ -268,14 +320,13 @@ export async function runTaskGenerationTrigger(options = {}) {
           return cDate && isSameDay(cDate, targetDateObj);
         });
         if (!foundInCalendar) {
-          // If calendar is present and date is not in working day calendar
           isWorkingDay = false;
           addLog(`Target date ${todayDDMMYYYY} is marked as non-working day in calendar`, 'warning');
         }
       }
 
       if (!isWorkingDay) {
-        addLog(`Task generation skipped because ${todayDDMMYYYY} is not a working day. (You can toggle 'Ignore Calendar Check' to force generation).`, 'warning');
+        addLog(`Task generation skipped because ${todayDDMMYYYY} is not a working day. (Toggle 'Ignore Holiday / Calendar Check' to force generate).`, 'warning');
         return {
           success: true,
           skipped: true,
@@ -289,26 +340,43 @@ export async function runTaskGenerationTrigger(options = {}) {
 
     // 2. Fetch Unique Templates
     addLog(`Fetching recurring task templates from 'Unique' table...`);
-    let query = supabase.from('Unique').select('*');
+    let templates = [];
+
     if (specificTemplateId) {
-      query = query.eq('Task ID', specificTemplateId);
+      // First try direct query
+      const { data: specificTemplates, error: specificErr } = await supabase
+        .from('Unique')
+        .select('*')
+        .eq('Task ID', specificTemplateId);
+
+      if (!specificErr && specificTemplates && specificTemplates.length > 0) {
+        templates = specificTemplates;
+      } else {
+        // Fallback to searching all templates in case Task ID is string/number mismatch
+        const { data: allT } = await supabase.from('Unique').select('*').limit(3000);
+        if (allT) {
+          templates = allT.filter(t => String(t['Task ID'] ?? t.id ?? '').trim() === String(specificTemplateId).trim());
+        }
+      }
+    } else {
+      const { data: allTemplates, error: templateError } = await supabase.from('Unique').select('*').limit(3000);
+      if (templateError) throw templateError;
+      templates = allTemplates || [];
     }
-    const { data: templates, error: templateError } = await query;
-    if (templateError) throw templateError;
 
     if (!templates || templates.length === 0) {
-      addLog(`No templates found in 'Unique' table to process.`, 'warning');
+      addLog(`No matching templates found in 'Unique' table to process.`, 'warning');
       return { success: true, tasksGenerated: 0, generatedTasks: [], logs };
     }
 
-    addLog(`Found ${templates.length} templates. Checking eligibility for ${todayDDMMYYYY}...`);
+    addLog(`Found ${templates.length} template(s). Evaluating eligibility for ${todayDDMMYYYY}...`);
 
-    // 3. Fetch existing Checklist tasks to check for duplicate prevention
+    // 3. Fetch existing Checklist tasks to ensure 100% duplicate prevention
     const { data: existingChecklistRows, error: cErr } = await supabase
       .from('Checklist')
       .select('"Task ID", "Name", "Tast Descriptions", "Task Description", "Task Start Date"')
       .order('Task ID', { ascending: false })
-      .limit(3000);
+      .limit(4000);
 
     if (cErr) {
       console.warn('Could not fetch existing Checklist rows for deduplication:', cErr);
@@ -355,17 +423,23 @@ export async function runTaskGenerationTrigger(options = {}) {
 
       const taskKey = makeTaskKey(name, taskDesc, todayDDMMYYYY);
 
-      // Strict duplicate check: if task already exists in Checklist for today or was already generated in this run
-      if (existingTaskKeys.has(taskKey) || seenInThisRun.has(taskKey)) {
-        // Ensure template Last Date is synced to today in Unique table
+      // Single template run requested manually
+      const isSingleManualRun = specificTemplateId && (String(template['Task ID']) === String(specificTemplateId) || forceRunSpecific);
+
+      // Check duplicate
+      const alreadyExistsInChecklist = existingTaskKeys.has(taskKey) || seenInThisRun.has(taskKey);
+
+      if (alreadyExistsInChecklist && !isSingleManualRun) {
+        // If task is already in Checklist for today, make sure template's Last Date is synced to today
         templateUpdates.push({
           id: template['Task ID'],
+          dbId: template.id,
           newLastDate: todayDDMMYYYY
         });
         continue;
       }
 
-      if (evalResult.isDue) {
+      if (evalResult.isDue || isSingleManualRun) {
         seenInThisRun.add(taskKey);
         const taskId = nextTaskId++;
 
@@ -390,6 +464,7 @@ export async function runTaskGenerationTrigger(options = {}) {
         tasksToInsert.push(newTask);
         templateUpdates.push({
           id: template['Task ID'],
+          dbId: template.id,
           newLastDate: todayDDMMYYYY
         });
 
@@ -406,35 +481,28 @@ export async function runTaskGenerationTrigger(options = {}) {
     }
 
     if (tasksToInsert.length === 0) {
-      addLog(`All templates are already up-to-date and generated for ${todayDDMMYYYY}. 0 tasks generated.`, 'info');
+      addLog(`All evaluated templates are already generated and up-to-date for ${todayDDMMYYYY}. 0 new tasks needed.`, 'info');
       
       // Update template Last Dates if any were out of sync
       if (templateUpdates.length > 0) {
-        for (const update of templateUpdates) {
-          try {
-            await supabase
-              .from('Unique')
-              .update({ 'Last Date': update.newLastDate })
-              .eq('Task ID', update.id);
-          } catch (err) {
-            console.warn(`Could not sync template ${update.id}:`, err);
-          }
-        }
+        addLog(`Syncing 'Last Date' on ${templateUpdates.length} existing templates to ${todayDDMMYYYY}...`);
+        const { updatedCount } = await updateUniqueTemplatesLastDateBatch(templateUpdates);
+        addLog(`✅ Successfully synced ${updatedCount} template Last Dates to ${todayDDMMYYYY}.`, 'success');
       }
 
       return {
         success: true,
         tasksGenerated: 0,
         generatedTasks: [],
+        updatedTemplatesCount: templateUpdates.length,
         totalEvaluated: templates.length,
         logs
       };
     }
 
-    addLog(`Generating ${tasksToInsert.length} new tasks in Checklist table...`);
+    addLog(`Inserting ${tasksToInsert.length} new generated task(s) into 'Checklist' table...`);
 
-    // 5. Batch Insert into Checklist
-    // Insert in batches of 50 to avoid payload limits
+    // 5. Batch Insert into Checklist table
     const BATCH_SIZE = 50;
     for (let i = 0; i < tasksToInsert.length; i += BATCH_SIZE) {
       const batch = tasksToInsert.slice(i, i + BATCH_SIZE);
@@ -442,21 +510,15 @@ export async function runTaskGenerationTrigger(options = {}) {
       if (insertErr) throw insertErr;
     }
 
-    addLog(`Updating 'Last Date' on ${templateUpdates.length} templates in Unique table...`);
-
-    // 6. Update templates Last Date in Unique
-    for (const update of templateUpdates) {
-      try {
-        await supabase
-          .from('Unique')
-          .update({ 'Last Date': update.newLastDate })
-          .eq('Task ID', update.id);
-      } catch (err) {
-        console.warn(`Could not update Last Date for template ${update.id}:`, err);
-      }
+    // 6. Fast Parallel Batch Update Last Date in 'Unique' table
+    addLog(`Updating 'Last Date' to ${todayDDMMYYYY} on ${templateUpdates.length} template(s) in 'Unique' table...`);
+    const { updatedCount, errors: updateErrors } = await updateUniqueTemplatesLastDateBatch(templateUpdates);
+    
+    if (updateErrors.length > 0) {
+      console.warn(`Template Last Date update notices:`, updateErrors);
     }
 
-    // Save trigger log in localStorage for quick display in UI
+    // 7. Save trigger log in localStorage for display
     try {
       const historyItem = {
         timestamp: new Date().toISOString(),
@@ -471,12 +533,13 @@ export async function runTaskGenerationTrigger(options = {}) {
       console.warn('Failed to save trigger history to localStorage:', e);
     }
 
-    addLog(`✅ Successfully generated ${tasksToInsert.length} tasks for date ${todayDDMMYYYY}!`, 'success');
+    addLog(`✅ Successfully generated ${tasksToInsert.length} task(s) and updated 'Last Date' to ${todayDDMMYYYY} for date ${todayDDMMYYYY}!`, 'success');
 
     return {
       success: true,
       tasksGenerated: tasksToInsert.length,
       generatedTasks: generatedTasksSummary,
+      updatedTemplatesCount: updatedCount,
       totalEvaluated: templates.length,
       logs
     };

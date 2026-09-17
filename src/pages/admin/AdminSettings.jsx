@@ -18,7 +18,8 @@ import {
   formatDateToDDMMYYYY, 
   parseDateString, 
   isTemplateDue,
-  isSameDay
+  isSameDay,
+  updateUniqueTemplatesLastDateBatch
 } from '../../utils/taskTriggerEngine';
 
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyAy98t3XAyRP3pFE7XOoDiTDU3Yc9WOIFayRXELW2XnUAzl7yE9bnO94GvZV0wJkH_/exec";
@@ -73,6 +74,8 @@ export default function AdminSettings() {
   // Stats & Main State
   const [loading, setLoading] = useState(true);
   const [isRunningTrigger, setIsRunningTrigger] = useState(false);
+  const [runningRowId, setRunningRowId] = useState(null);
+  const [isSyncingDates, setIsSyncingDates] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [checklistCount, setChecklistCount] = useState(0);
   const [delegationCount, setDelegationCount] = useState(0);
@@ -682,17 +685,23 @@ export default function AdminSettings() {
 
   // Run Task Generation Trigger
   const handleExecuteTrigger = async (specificId = null) => {
-    if (isRunningTrigger) return;
-    setIsRunningTrigger(true);
+    if (isRunningTrigger || runningRowId) return;
+    if (specificId) {
+      setRunningRowId(specificId);
+    } else {
+      setIsRunningTrigger(true);
+    }
     setExecutionLogs([]);
     setLastResult(null);
 
     const targetDateObj = selectedDate ? new Date(selectedDate) : new Date();
+    const targetDateDDMMYYYY = formatDateToDDMMYYYY(targetDateObj);
 
     const result = await runTaskGenerationTrigger({
       targetDate: targetDateObj,
-      ignoreCalendarCheck,
+      ignoreCalendarCheck: specificId ? true : ignoreCalendarCheck,
       specificTemplateId: specificId,
+      forceRunSpecific: !!specificId,
       onProgress: (logEntry, allLogs) => {
         setExecutionLogs([...allLogs]);
       }
@@ -700,13 +709,106 @@ export default function AdminSettings() {
 
     setLastResult(result);
     setIsRunningTrigger(false);
+    setRunningRowId(null);
 
-    // Refresh templates data to show updated Last Date
-    const { data: uData } = await supabase.from('Unique').select('*').limit(3000);
-    if (uData) setTemplates(uData);
+    // Optimistic immediate update to local state so UI status flips to "Up to Date" instantly
+    if (result.success) {
+      if (specificId) {
+        setTemplates(prev =>
+          prev.map(item =>
+            String(item['Task ID'] ?? item.id) === String(specificId)
+              ? { ...item, 'Last Date': targetDateDDMMYYYY }
+              : item
+          )
+        );
+      } else if (result.generatedTasks && result.generatedTasks.length > 0) {
+        const generatedIds = new Set(result.generatedTasks.map(t => String(t.templateId)));
+        setTemplates(prev =>
+          prev.map(item =>
+            generatedIds.has(String(item['Task ID'] ?? item.id))
+              ? { ...item, 'Last Date': targetDateDDMMYYYY }
+              : item
+          )
+        );
+      }
+    }
+
+    // Refresh templates data to ensure 100% sync with Supabase
+    try {
+      const { data: uData } = await supabase.from('Unique').select('*').limit(3000);
+      if (uData) setTemplates(uData);
+
+      const { count: cCount } = await supabase.from('Checklist').select('*', { count: 'exact', head: true });
+      if (cCount !== null) setChecklistCount(cCount);
+    } catch (refreshErr) {
+      console.warn('Could not refresh templates after trigger:', refreshErr);
+    }
 
     const savedHistory = JSON.parse(localStorage.getItem('task_trigger_history') || '[]');
     setTriggerHistory(savedHistory);
+  };
+
+  // Sync all template Last Dates with existing Checklist tasks for selected date
+  const handleSyncAllLastDates = async () => {
+    if (isSyncingDates) return;
+    setIsSyncingDates(true);
+    try {
+      const targetDateObj = selectedDate ? new Date(selectedDate) : new Date();
+      const targetDateDDMMYYYY = formatDateToDDMMYYYY(targetDateObj);
+
+      // Fetch checklist tasks to find all templates that already have tasks generated
+      const { data: cRows, error: cErr } = await supabase
+        .from('Checklist')
+        .select('"Task ID", "Name", "Tast Descriptions", "Task Description", "Task Start Date"')
+        .order('Task ID', { ascending: false })
+        .limit(4000);
+      if (cErr) throw cErr;
+
+      const norm = (s) => (s || '').toString().trim().toLowerCase();
+      const generatedTodaySet = new Set();
+      if (cRows) {
+        cRows.forEach(r => {
+          const d = r['Tast Descriptions'] || r['Task Description'] || '';
+          const n = r['Name'] || '';
+          const dt = r['Task Start Date'] || '';
+          const p = parseDateString(dt);
+          const dtStr = p ? formatDateToDDMMYYYY(p) : dt;
+          if (dtStr === targetDateDDMMYYYY) {
+            generatedTodaySet.add(`${norm(n)}:::${norm(d)}`);
+          }
+        });
+      }
+
+      // Prepare updates for templates that have tasks in Checklist for target date
+      const updates = [];
+      templates.forEach(t => {
+        const d = t['Task Description'] || t['Tast Descriptions'] || '';
+        const n = t['Name'] || '';
+        const key = `${norm(n)}:::${norm(d)}`;
+        if (generatedTodaySet.has(key)) {
+          updates.push({
+            id: t['Task ID'],
+            dbId: t.id,
+            newLastDate: targetDateDDMMYYYY
+          });
+        }
+      });
+
+      if (updates.length > 0) {
+        const { updatedCount } = await updateUniqueTemplatesLastDateBatch(updates);
+        // Refresh local templates
+        const { data: refreshed } = await supabase.from('Unique').select('*').limit(3000);
+        if (refreshed) setTemplates(refreshed);
+        alert(`✅ Synced 'Last Date' to ${targetDateDDMMYYYY} for ${updatedCount} template(s) already generated in Checklist!`);
+      } else {
+        alert(`Sabhi templates pehle se hi synced hain (${targetDateDDMMYYYY})!`);
+      }
+    } catch (err) {
+      console.error('Error syncing last dates:', err);
+      alert(`Sync failed: ${err.message || err}`);
+    } finally {
+      setIsSyncingDates(false);
+    }
   };
 
   // Helpers for Last Generated Date Inline Editing
@@ -731,17 +833,23 @@ export default function AdminSettings() {
     const formattedDate = newIsoDate ? isoToDdmmyyyy(newIsoDate) : null;
     setUpdatingDateId(taskId);
     try {
-      const { error } = await supabase
+      let res = await supabase
         .from('Unique')
         .update({ 'Last Date': formattedDate })
         .eq('Task ID', taskId);
 
-      if (error) throw error;
+      if (res.error) {
+        // Fallback by id
+        await supabase
+          .from('Unique')
+          .update({ 'Last Date': formattedDate })
+          .eq('id', taskId);
+      }
 
       // Update local templates state immediately
       setTemplates(prev =>
         prev.map(item =>
-          item['Task ID'] === taskId ? { ...item, 'Last Date': formattedDate } : item
+          String(item['Task ID'] ?? item.id) === String(taskId) ? { ...item, 'Last Date': formattedDate } : item
         )
       );
       setEditingLastDateId(null);
@@ -2871,6 +2979,17 @@ export default function AdminSettings() {
 
               <button
                 type="button"
+                onClick={handleSyncAllLastDates}
+                disabled={isSyncingDates || loading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
+                title="Sync Last Date of all templates that already exist in Checklist for selected date"
+              >
+                <Zap className={`h-3.5 w-3.5 ${isSyncingDates ? 'animate-spin text-emerald-600' : 'text-emerald-600'}`} />
+                <span>{isSyncingDates ? 'Syncing Dates...' : '⚡ Sync Dates'}</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={loadData}
                 disabled={loading}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
@@ -3004,12 +3123,16 @@ export default function AdminSettings() {
                         <td className="py-2.5 px-3 text-center whitespace-nowrap">
                           <button
                             onClick={() => handleExecuteTrigger(t['Task ID'])}
-                            disabled={isRunningTrigger}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-50 shadow-xs"
+                            disabled={isRunningTrigger || runningRowId === t['Task ID']}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-50 shadow-xs cursor-pointer active:scale-95"
                             title="Generate a task right now for this template"
                           >
-                            <Play className="h-3 w-3 fill-current" />
-                            <span>Run</span>
+                            {runningRowId === t['Task ID'] ? (
+                              <RefreshCw className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Play className="h-3 w-3 fill-current" />
+                            )}
+                            <span>{runningRowId === t['Task ID'] ? 'Running...' : 'Run'}</span>
                           </button>
                         </td>
                       </tr>

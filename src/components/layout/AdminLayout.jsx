@@ -60,18 +60,6 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
     setUsername(storedUsername)
     setUserRole(storedRole || "user")
     setUserEmail(storedEmail || "")
-
-    // Background auto-trigger task generation if role is admin
-    if (storedRole === 'admin' && localStorage.getItem('auto_trigger_on_login') !== 'false') {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const lastAutoRun = localStorage.getItem('last_auto_trigger_date');
-      if (lastAutoRun !== todayStr) {
-        localStorage.setItem('last_auto_trigger_date', todayStr);
-        import('../../utils/taskTriggerEngine.js').then(m => {
-          m.runTaskGenerationTrigger({ targetDate: new Date(), ignoreCalendarCheck: false });
-        }).catch(err => console.warn('Auto trigger error:', err));
-      }
-    }
   }, [navigate])
 
 
