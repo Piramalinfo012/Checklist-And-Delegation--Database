@@ -406,16 +406,17 @@ export default function AdminSettings() {
   const handleOpenEditUserModal = (user) => {
     setIsEditingUser(true);
     setUserFormData({
-      originalUsername: user.Username || '',
-      Username: user.Username || '',
-      password: user.password || '',
+      id: user.id !== undefined ? user.id : null,
+      originalUsername: user.Username || user['User name'] || '',
+      Username: user.Username || user['User name'] || '',
+      password: user.password || user.Password || '',
       Role: user.Role || 'user',
-      Email: user.Email || '',
+      Email: user.Email || user.ID || '',
       Number: user.Number || '',
-      Photo: user.Photo || ''
+      Photo: user.Photo || user.Image || ''
     });
     setUserPhotoFile(null);
-    setUserPhotoPreview(user.Photo || '');
+    setUserPhotoPreview(user.Photo || user.Image || '');
     setUserFormError('');
     setUserFormSuccess('');
     setIsUserModalOpen(true);
@@ -451,7 +452,7 @@ export default function AdminSettings() {
       // Check for duplicate username on creation
       if (!isEditingUser) {
         const isDuplicate = users.some(
-          u => (u.Username || '').trim().toLowerCase() === trimmedUsername.toLowerCase()
+          u => (u.Username || u['User name'] || '').trim().toLowerCase() === trimmedUsername.toLowerCase()
         );
         if (isDuplicate) {
           throw new Error(`Username "${trimmedUsername}" already exists! Please choose a unique name.`);
@@ -484,10 +485,14 @@ export default function AdminSettings() {
 
       if (isEditingUser) {
         // Update user in Whatsapp table
-        const { error: updateErr } = await supabase
-          .from('Whatsapp')
-          .update(rowToSave)
-          .eq('Username', userFormData.originalUsername);
+        let updateErr = null;
+        if (userFormData.id !== undefined && userFormData.id !== null) {
+          const res = await supabase.from('Whatsapp').update(rowToSave).eq('id', userFormData.id);
+          updateErr = res.error;
+        } else {
+          const res = await supabase.from('Whatsapp').update(rowToSave).ilike('Username', userFormData.originalUsername.trim());
+          updateErr = res.error;
+        }
 
         if (updateErr) throw updateErr;
         setUserFormSuccess(`User "${trimmedUsername}" updated successfully!`);
@@ -531,22 +536,37 @@ export default function AdminSettings() {
   // Toggle user Active / Inactive
   const handleToggleUserStatus = async (user) => {
     try {
+      const targetUsername = (user.Username || user['User name'] || '').trim();
       const isCurrentlyInactive = (user.Role || '').toLowerCase() === 'in active' || (user.Role || '').toLowerCase() === 'inactive';
       const newRole = isCurrentlyInactive ? 'user' : 'In Active';
 
-      const { error } = await supabase
-        .from('Whatsapp')
-        .update({ 'Role': newRole })
-        .eq('Username', user.Username);
+      let updateErr = null;
+      if (user.id !== undefined && user.id !== null) {
+        const res = await supabase.from('Whatsapp').update({ 'Role': newRole }).eq('id', user.id);
+        updateErr = res.error;
+      } else if (targetUsername) {
+        const res1 = await supabase.from('Whatsapp').update({ 'Role': newRole }).eq('Username', targetUsername);
+        if (res1.error) {
+          const res2 = await supabase.from('Whatsapp').update({ 'Role': newRole }).ilike('Username', targetUsername);
+          updateErr = res2.error;
+        }
+      }
 
-      if (error) throw error;
+      if (updateErr) throw updateErr;
 
       // Clear local cache
       try {
         localStorage.removeItem('masterDataCache');
+        localStorage.removeItem('masterDataCacheTime');
+        localStorage.removeItem(`whatsapp_user_cache_${targetUsername.toLowerCase()}`);
       } catch (e) {}
 
-      setUsers(prev => prev.map(u => u.Username === user.Username ? { ...u, Role: newRole } : u));
+      setUsers(prev => prev.map(u => {
+        const uName = (u.Username || u['User name'] || '').trim();
+        if (user.id !== undefined && u.id !== undefined && u.id === user.id) return { ...u, Role: newRole };
+        if (uName.toLowerCase() === targetUsername.toLowerCase()) return { ...u, Role: newRole };
+        return u;
+      }));
     } catch (err) {
       alert(`Failed to update status: ${err.message || err}`);
     }
@@ -554,27 +574,89 @@ export default function AdminSettings() {
 
   // Delete user from Whatsapp table
   const handleDeleteUser = async (user) => {
+    const targetUsername = (user.Username || user['User name'] || '').trim();
     const confirmDelete = window.confirm(
-      `Are you sure you want to permanently delete user ID "${user.Username}" from Whatsapp table? This cannot be undone.`
+      `Are you sure you want to permanently delete user ID "${targetUsername}" from Whatsapp table? This cannot be undone.`
     );
     if (!confirmDelete) return;
 
     try {
-      const { error } = await supabase
-        .from('Whatsapp')
-        .delete()
-        .eq('Username', user.Username);
+      let deleteSuccess = false;
+      let lastError = null;
 
-      if (error) throw error;
+      // 1. Try deleting by primary key 'id'
+      if (user.id !== undefined && user.id !== null) {
+        const { error: idErr } = await supabase
+          .from('Whatsapp')
+          .delete()
+          .eq('id', user.id);
+        if (!idErr) {
+          deleteSuccess = true;
+        } else {
+          lastError = idErr;
+        }
+      }
 
-      // Clear cache
+      // 2. Try deleting by exact Username
+      if (!deleteSuccess && targetUsername) {
+        const { error: nameErr } = await supabase
+          .from('Whatsapp')
+          .delete()
+          .eq('Username', targetUsername);
+        if (!nameErr) {
+          deleteSuccess = true;
+        } else {
+          // 3. Try case-insensitive ilike Username
+          const { error: ilikeErr } = await supabase
+            .from('Whatsapp')
+            .delete()
+            .ilike('Username', targetUsername);
+          if (!ilikeErr) {
+            deleteSuccess = true;
+          } else {
+            // 4. Try column 'User name'
+            const { error: spaceErr } = await supabase
+              .from('Whatsapp')
+              .delete()
+              .eq('User name', targetUsername);
+            if (!spaceErr) {
+              deleteSuccess = true;
+            } else {
+              lastError = spaceErr;
+            }
+          }
+        }
+      }
+
+      if (!deleteSuccess && lastError) {
+        throw lastError;
+      }
+
+      // Clear all local caches
       try {
         localStorage.removeItem('masterDataCache');
-        localStorage.removeItem(`whatsapp_user_cache_${(user.Username || '').toLowerCase()}`);
+        localStorage.removeItem('masterDataCacheTime');
+        localStorage.removeItem(`whatsapp_user_cache_${targetUsername.toLowerCase()}`);
       } catch (e) {}
 
-      setUsers(prev => prev.filter(u => u.Username !== user.Username));
+      // Update state immediately
+      setUsers(prev => prev.filter(u => {
+        const uName = (u.Username || u['User name'] || '').trim();
+        if (user.id !== undefined && u.id !== undefined) return u.id !== user.id;
+        return uName.toLowerCase() !== targetUsername.toLowerCase();
+      }));
+
+      // Re-fetch to ensure sync with Supabase
+      const { data: refreshed } = await supabase
+        .from('Whatsapp')
+        .select('*')
+        .order('Username', { ascending: true });
+      if (refreshed) {
+        setUsers(refreshed);
+      }
+
     } catch (err) {
+      console.error('Failed to delete user:', err);
       alert(`Failed to delete user: ${err.message || err}`);
     }
   };
