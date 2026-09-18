@@ -1279,23 +1279,22 @@ export default function AdminSettings() {
 
             // Admin Done (Col T / col19):
             let col19_adminDone = '';
-            if (latestDoneRecord) {
-              const ad = String(latestDoneRecord['Admin Done'] || '').trim().toLowerCase();
-              const latestSt = String(latestDoneRecord['Status'] || '').trim().toLowerCase();
-              if (ad === 'done' && latestSt === 'done') {
-                col19_adminDone = 'Done';
-              }
-            } else if (r['Admin Done']) {
-              const rowAd = String(r['Admin Done']).trim().toLowerCase();
-              const rowSt = String(r['Status'] || '').trim().toLowerCase();
-              if (rowAd === 'done' && rowSt === 'done') {
-                col19_adminDone = 'Done';
-              }
+            const rowAdminDone = String(r['Admin Done'] || '').trim().toLowerCase();
+            const rowFilterCond = String(r['Filter Condition'] || '').trim().toLowerCase();
+            const latestDoneAdminDone = latestDoneRecord ? String(latestDoneRecord['Admin Done'] || '').trim().toLowerCase() : '';
+            const hasAnyDoneAdmin = taskDoneList.some(d => String(d['Admin Done'] || '').trim().toLowerCase() === 'done');
+
+            if (rowAdminDone === 'done' || rowFilterCond === 'done' || latestDoneAdminDone === 'done' || hasAnyDoneAdmin) {
+              col19_adminDone = 'Done';
             }
 
             let col20_filterCondition = '';
             if (!taskIdStr) {
               col20_filterCondition = '';
+            } else if (col19_adminDone && col19_adminDone.toLowerCase() === 'done') {
+              col20_filterCondition = 'Done';
+            } else if (rowFilterCond === 'done') {
+              col20_filterCondition = 'Done';
             } else if (!col11_actual) {
               if (plannedDateObj) {
                 const pDay = new Date(plannedDateObj);
@@ -1309,11 +1308,7 @@ export default function AdminSettings() {
                 col20_filterCondition = 'Pending';
               }
             } else {
-              if (col19_adminDone && col19_adminDone.toLowerCase() === 'done') {
-                col20_filterCondition = 'Done';
-              } else {
-                col20_filterCondition = 'Verify Pending';
-              }
+              col20_filterCondition = 'Verify Pending';
             }
 
             return [
