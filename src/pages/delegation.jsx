@@ -12,7 +12,14 @@ import {
   Camera,
   Image as ImageIcon,
   Clipboard,
-  RefreshCw
+  RefreshCw,
+  Eye,
+  ExternalLink,
+  FileText,
+  Paperclip,
+  Check,
+  Calendar,
+  Clock
 } from "lucide-react";
 import AdminLayout from "../components/layout/AdminLayout";
 import { supabase } from "../lib/supabaseClient";
@@ -89,6 +96,7 @@ function DelegationDataPage() {
     isOpen: false,
     itemCount: 0,
   });
+  const [previewImageUrl, setPreviewImageUrl] = useState(null);
   const [delegationData, setDelegationData] = useState([]);
 
   const [statusCounts, setStatusCounts] = useState({
@@ -659,6 +667,17 @@ function DelegationDataPage() {
 
       if (mainResponse.error) throw mainResponse.error;
 
+      // Build quick lookup map of parent delegation tasks
+      const delegationTaskMap = new Map();
+      if (mainResponse.data) {
+        mainResponse.data.forEach((row) => {
+          const rawTaskId = row['Task ID'] ?? row['Task id'] ?? '';
+          if (rawTaskId) {
+            delegationTaskMap.set(String(rawTaskId).trim(), row);
+          }
+        });
+      }
+
       // Group DELEGATION DONE records by Task id
       const doneByTaskId = new Map();
       let processedHistoryData = [];
@@ -667,12 +686,20 @@ function DelegationDataPage() {
         processedHistoryData = historyResponse.data.map((row, rowIndex) => {
           const rawTaskId = row['Task id'] ?? row['Task ID'] ?? row['taskId'] ?? '';
           const taskIdStr = String(rawTaskId).trim();
+          const delegParent = taskIdStr ? delegationTaskMap.get(taskIdStr) : null;
+
           if (taskIdStr) {
             if (!doneByTaskId.has(taskIdStr)) {
               doneByTaskId.set(taskIdStr, []);
             }
             doneByTaskId.get(taskIdStr).push(row);
           }
+
+          const taskDesc = row['Task Description'] || (delegParent ? (delegParent['Task Description'] || delegParent['Task description'] || delegParent['Description']) : "") || "";
+          const assignedUser = row['Name'] || (delegParent ? (delegParent['Name'] || delegParent['User']) : "") || "";
+          const givenBy = row['Given By'] || (delegParent ? (delegParent['Given By'] || delegParent['Given by']) : "") || "";
+          const uploadImg = row['Upload Image'] || row['Upload Imgage'] || row['Upload'] || (delegParent ? (delegParent['Upload Imgage'] || delegParent['Upload Image']) : "") || "";
+          const adminDoneStatus = row['Admin Done'] || (delegParent ? delegParent['Admin Done'] : "") || "";
 
           return {
             _id: row['id'] ? `hist_${row['id']}` : `hist_row_${rowIndex}`,
@@ -681,15 +708,15 @@ function DelegationDataPage() {
             col0: row['Timestamp'] || "",
             col1: rawTaskId || "",
             col2: row['Status'] || "",
-            col3: row['Next extend date'] || "",
-            col4: row['Reason'] || "",
-            col5: row['Upload Image'] || "",
+            col3: row['Next extend date'] || row['Next Extend Date'] || "",
+            col4: row['Reason'] || row['Remarks'] || "",
+            col5: uploadImg,
             col6: row['Condition Date'] || "",
-            col7: row['Name'] || "",
-            col8: row['Task Description'] || "",
-            col9: row['Given By'] || "",
-            col10: row['Admin Done'] || "",
-            col15: row['Admin Done'] || "" // Map Admin Done to col15 as expected by some components
+            col7: assignedUser,
+            col8: taskDesc,
+            col9: givenBy,
+            col10: adminDoneStatus,
+            col15: adminDoneStatus // Map Admin Done to col15 as expected by some components
           };
         });
       }
@@ -1718,279 +1745,443 @@ function DelegationDataPage() {
             </div>
           ) : showHistory ? (
             <>
-              {/* Simplified History Filters - Only Date Range */}
-              <div className="p-4 border-b border-purple-100 bg-gray-50">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div className="flex flex-col">
-                    <div className="mb-2 flex items-center">
-                      <span className="text-sm font-medium text-purple-700">
-                        Filter by Date Range:
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center">
-                        <label
-                          htmlFor="start-date"
-                          className="text-sm text-gray-700 mr-1"
+              {/* Full-Screen Image Lightbox Preview Modal */}
+              {previewImageUrl && (
+                <div
+                  className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+                  onClick={() => setPreviewImageUrl(null)}
+                >
+                  <div
+                    className="relative max-w-4xl max-h-[90vh] bg-slate-900 rounded-2xl p-4 border border-white/20 shadow-2xl flex flex-col items-center"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="w-full flex items-center justify-between pb-3 px-1 border-b border-white/10">
+                      <div className="flex items-center gap-2 text-white">
+                        <ImageIcon className="w-4 h-4 text-purple-400" />
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-200">Attachment Preview</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={previewImageUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-xs text-purple-300 hover:text-white bg-purple-600/40 hover:bg-purple-600 px-3 py-1.5 rounded-lg transition-all font-medium border border-purple-400/30"
                         >
-                          From
-                        </label>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>Open in New Tab</span>
+                        </a>
+                        <button
+                          onClick={() => setPreviewImageUrl(null)}
+                          className="p-1.5 text-slate-400 hover:text-white bg-white/10 hover:bg-white/20 rounded-lg transition-all"
+                          title="Close"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-3 overflow-auto max-h-[75vh] flex items-center justify-center p-2">
+                      <img
+                        src={previewImageUrl}
+                        alt="Attachment Preview"
+                        className="max-h-[72vh] max-w-full rounded-xl object-contain shadow-2xl border border-white/10"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = "https://img.icons8.com/color/96/document--v1.png";
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* History Filter Bar & Summary Header */}
+              <div className="p-4 border-b border-purple-100 bg-gradient-to-r from-purple-50/50 via-slate-50 to-indigo-50/40">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  {/* Left Stats & Filter */}
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 bg-purple-100/90 text-purple-800 rounded-lg text-xs font-bold border border-purple-200/80 shadow-sm">
+                        Total Records: {filteredHistoryData.length}
+                      </span>
+                      {userRole === "admin" && (
+                        <span className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-lg text-xs font-bold border border-emerald-200 shadow-sm">
+                          Verified: {filteredHistoryData.filter((item) => isItemAdminDone(item)).length}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Date Range Inputs */}
+                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-sm">
+                      <Calendar className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                      <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                        <span className="font-semibold text-slate-700">From:</span>
                         <input
-                          id="start-date"
                           type="date"
                           value={startDate}
                           onChange={(e) => setStartDate(e.target.value)}
-                          className="text-sm border border-gray-200 rounded-md p-1"
+                          className="bg-transparent border-0 text-slate-800 text-xs font-medium focus:ring-0 p-0 cursor-pointer"
                         />
                       </div>
-                      <div className="flex items-center">
-                        <label
-                          htmlFor="end-date"
-                          className="text-sm text-gray-700 mr-1"
-                        >
-                          To
-                        </label>
+                      <span className="text-slate-300">|</span>
+                      <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                        <span className="font-semibold text-slate-700">To:</span>
                         <input
-                          id="end-date"
                           type="date"
                           value={endDate}
                           onChange={(e) => setEndDate(e.target.value)}
-                          className="text-sm border border-gray-200 rounded-md p-1"
+                          className="bg-transparent border-0 text-slate-800 text-xs font-medium focus:ring-0 p-0 cursor-pointer"
                         />
                       </div>
                     </div>
                   </div>
 
-                  {(startDate || endDate || searchTerm) && (
-                    <button
-                      onClick={resetFilters}
-                      className="px-3 py-1 bg-red-100 text-red-700 rounded-md hover:bg-red-200 text-sm"
-                    >
-                      Clear All Filters
-                    </button>
-                  )}
+                  {/* Right Actions */}
+                  <div className="flex items-center gap-2">
+                    {userRole === "admin" && selectedHistoryItems.length > 0 && (
+                      <button
+                        onClick={handleMarkMultipleDone}
+                        disabled={markingAsDone}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-2 transition-all active:scale-95"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>{markingAsDone ? "Verifying..." : `Verify Selected (${selectedHistoryItems.length})`}</span>
+                      </button>
+                    )}
+
+                    {(startDate || endDate || searchTerm || nameFilter) && (
+                      <button
+                        onClick={() => {
+                          resetFilters();
+                          setNameFilter("");
+                        }}
+                        className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-bold border border-red-200 flex items-center gap-1 transition-all"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Clear Filters</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* History Table */}
-              <div className="overflow-x-auto sticky top-0 max-h-[calc(100vh-300px)] overflow-y-auto">
+              {/* Redesigned & Perfectly Aligned History Table */}
+              <div className="overflow-x-auto sticky top-0 max-h-[calc(100vh-280px)] overflow-y-auto">
                 <div className="min-w-full">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        {/* NEW: Submission Status Column Header */}
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[80px]">
+                  <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
+                    <thead className="bg-slate-50 sticky top-0 z-20 shadow-sm">
+                      <tr className="border-b border-slate-200">
+                        {/* 1. Admin Select Checkbox */}
+                        {userRole === "admin" && (
+                          <th className="px-3 py-3.5 text-center text-[11px] font-bold text-slate-600 uppercase tracking-wider w-12 bg-slate-50">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                              title="Select All Unverified"
+                              checked={
+                                filteredHistoryData.filter((item) => !isItemAdminDone(item)).length > 0 &&
+                                selectedHistoryItems.length === filteredHistoryData.filter((item) => !isItemAdminDone(item)).length
+                              }
+                              onChange={(e) => {
+                                const unprocessed = filteredHistoryData.filter((item) => !isItemAdminDone(item));
+                                if (e.target.checked) {
+                                  setSelectedHistoryItems(unprocessed);
+                                } else {
+                                  setSelectedHistoryItems([]);
+                                }
+                              }}
+                            />
+                          </th>
+                        )}
+
+                        {/* 2. Edit Action */}
+                        <th className="px-3 py-3.5 text-center text-[11px] font-bold text-slate-600 uppercase tracking-wider w-14 bg-slate-50">
                           Edit
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Submission Status
-                        </th>
-                        {/* Admin Select Column Header */}
-                        {userRole === "admin" && (
-                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
-                            <div className="flex flex-col items-center">
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
-                                checked={
-                                  filteredHistoryData.filter(
-                                    (item) => !isItemAdminDone(item)
-                                  ).length > 0 &&
-                                  selectedHistoryItems.length ===
-                                  filteredHistoryData.filter(
-                                    (item) => !isItemAdminDone(item)
-                                  ).length
-                                }
-                                onChange={(e) => {
-                                  const unprocessedItems =
-                                    filteredHistoryData.filter(
-                                      (item) => !isItemAdminDone(item)
-                                    );
-                                  if (e.target.checked) {
-                                    setSelectedHistoryItems(unprocessedItems);
-                                  } else {
-                                    setSelectedHistoryItems([]);
-                                  }
-                                }}
-                              />
-                              <span className="text-xs text-gray-400 mt-1">
-                                Admin
-                              </span>
-                            </div>
-                          </th>
-                        )}
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Timestamp
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+
+                        {/* 3. Task ID */}
+                        <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-600 uppercase tracking-wider w-24 bg-slate-50">
                           Task ID
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Task
+
+                        {/* 4. Timestamp */}
+                        <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-600 uppercase tracking-wider min-w-[140px] bg-slate-50">
+                          Submission Date
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Remarks
+
+                        {/* 5. Task Description */}
+                        <th className="px-5 py-3.5 text-left text-[11px] font-bold text-slate-600 uppercase tracking-wider min-w-[260px] bg-slate-50">
+                          Task Description
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Status
+
+                        {/* 6. Assigned User */}
+                        <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-600 uppercase tracking-wider min-w-[140px] bg-slate-50">
+                          Assigned User
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Next Target Date
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Uploaded Image
-                        </th>
-                        {userRole === "admin" && (
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            User
-                          </th>
-                        )}
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+
+                        {/* 7. Given By */}
+                        <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-600 uppercase tracking-wider min-w-[120px] bg-slate-50">
                           Given By
                         </th>
+
+                        {/* 8. Status */}
+                        <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-600 uppercase tracking-wider min-w-[110px] bg-slate-50">
+                          Status
+                        </th>
+
+                        {/* 9. Next Target Date */}
+                        <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-600 uppercase tracking-wider min-w-[130px] bg-slate-50">
+                          Next Extend Date
+                        </th>
+
+                        {/* 10. Remarks */}
+                        <th className="px-5 py-3.5 text-left text-[11px] font-bold text-slate-600 uppercase tracking-wider min-w-[200px] bg-slate-50">
+                          Remarks / Reason
+                        </th>
+
+                        {/* 11. Uploaded Attachment */}
+                        <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-600 uppercase tracking-wider min-w-[130px] bg-slate-50">
+                          Attachment
+                        </th>
+
+                        {/* 12. Admin Done */}
                         {userRole === "admin" && (
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 min-w-[140px]">
-                            Admin Done
+                          <th className="px-4 py-3.5 text-center text-[11px] font-bold text-slate-600 uppercase tracking-wider min-w-[120px] bg-slate-50">
+                            Admin Status
                           </th>
                         )}
                       </tr>
                       {loading && <LoadingBuffer />}
                     </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+
+                    <tbody className="bg-white divide-y divide-slate-100">
                       {filteredHistoryData.length > 0 ? (
                         filteredHistoryData.map((history) => {
                           const isAdminDone = isItemAdminDone(history);
-                          const isSelected = selectedHistoryItems.some(
-                            (item) => item._id === history._id
-                          );
-                          const submissionStatus = getSubmissionStatus(
-                            history["col1"]
-                          ); // NEW: Get submission status
-                          console.log("submissionStatus", submissionStatus);
+                          const isSelected = selectedHistoryItems.some((item) => item._id === history._id);
+                          const rawImg = history["col5"] || "";
+                          const imgUrls = rawImg ? rawImg.split(",").map((u) => u.trim()).filter(Boolean) : [];
+                          const isExtend = String(history["col2"] || "").toLowerCase().includes("extend");
+                          const isDone = String(history["col2"] || "").toLowerCase() === "done";
 
                           return (
                             <tr
                               key={history._id}
-                              className={`hover:bg-gray-50 ${isAdminDone ? "opacity-70 bg-gray-100" : ""
-                                }`}
+                              className={`transition-colors duration-150 hover:bg-slate-50/80 ${
+                                isSelected ? "bg-purple-50/40" : isAdminDone ? "bg-slate-50/40" : "bg-white"
+                              }`}
                             >
-                              <td className="px-3 py-4 min-w-[80px]">
-                                {editingRemarks[history._id] ? (
-                                  <div className="flex space-x-2">
-                                    <button
-                                      onClick={() =>
-                                        handleEditRemarks(
-                                          history._id,
-                                          history["col4"],
-                                          history
-                                        )
+                              {/* 1. Admin Select Checkbox */}
+                              {userRole === "admin" && (
+                                <td className="px-3 py-3.5 text-center">
+                                  <input
+                                    type="checkbox"
+                                    disabled={isAdminDone}
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedHistoryItems((prev) => [...prev, history]);
+                                      } else {
+                                        setSelectedHistoryItems((prev) => prev.filter((item) => item._id !== history._id));
                                       }
-                                      className="text-green-600 hover:text-green-800"
-                                      title="Save"
+                                    }}
+                                    className={`h-4 w-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer ${
+                                      isAdminDone ? "opacity-30 cursor-not-allowed" : ""
+                                    }`}
+                                  />
+                                </td>
+                              )}
+
+                              {/* 2. Edit Action */}
+                              <td className="px-3 py-3.5 text-center">
+                                {editingRemarks[history._id] ? (
+                                  <div className="flex items-center justify-center gap-1.5">
+                                    <button
+                                      onClick={() => handleEditRemarks(history._id, history["col4"], history)}
+                                      className="p-1 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 transition-all"
+                                      title="Save Remarks"
                                     >
-                                      <CheckCircle2 size={20} />
+                                      <CheckCircle2 className="w-4 h-4" />
                                     </button>
                                     <button
-                                      onClick={() =>
-                                        setEditingRemarks((prev) => ({
-                                          ...prev,
-                                          [history._id]: false,
-                                        }))
-                                      }
-                                      className="text-red-600 hover:text-red-800"
+                                      onClick={() => setEditingRemarks((prev) => ({ ...prev, [history._id]: false }))}
+                                      className="p-1 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 transition-all"
                                       title="Cancel"
                                     >
-                                      <X size={20} />
+                                      <X className="w-4 h-4" />
                                     </button>
                                   </div>
                                 ) : (
                                   <button
-                                    onClick={() =>
-                                      setEditingRemarks((prev) => ({
-                                        ...prev,
-                                        [history._id]: true,
-                                      }))
-                                    }
-                                    className="text-blue-600 hover:text-blue-800"
+                                    onClick={() => setEditingRemarks((prev) => ({ ...prev, [history._id]: true }))}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-purple-600 hover:bg-purple-50 transition-all"
                                     title="Edit Remarks"
                                   >
-                                    <Edit size={20} />
+                                    <Edit className="w-4 h-4" />
                                   </button>
                                 )}
                               </td>
-                              {/* NEW: Submission Status Column */}
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                {history["col5"] ? (
-                                <div className="flex gap-2 flex-wrap">
-                                  {history["col5"].split(',').map(url => url.trim()).filter(Boolean).map((url, index) => (
-                                    <a
-                                      key={index}
-                                      href={url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="relative group block w-14 h-14 rounded-xl overflow-hidden shadow-sm border border-gray-200 hover:shadow-md transition-all flex-shrink-0"
-                                    >
-                                      <img
-                                        src={url}
-                                        alt={`Attachment ${index + 1}`}
-                                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                                        onError={(e) => {
-                                          e.target.onerror = null;
-                                          if (url.match(/\.pdf|\.doc|\.xls|\.csv|\.txt|\.zip|\.rar/i)) {
-                                            e.target.src = "https://img.icons8.com/color/48/document--v1.png";
-                                          } else {
-                                            e.target.src = "https://img.icons8.com/color/48/image.png";
-                                          }
-                                        }}
-                                      />
-                                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
-                                        <div className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-md">
-                                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
-                                        </div>
-                                      </div>
-                                    </a>
-                                  ))}
+
+                              {/* 3. Task ID */}
+                              <td className="px-4 py-3.5">
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-black bg-indigo-50 text-indigo-700 border border-indigo-200/80 shadow-sm">
+                                  #{history["col1"] || "—"}
+                                </span>
+                              </td>
+
+                              {/* 4. Timestamp */}
+                              <td className="px-4 py-3.5 whitespace-nowrap">
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-semibold text-slate-800">
+                                    {history["col0"] ? history["col0"].split(" ")[0] || history["col0"] : "—"}
+                                  </span>
+                                  {history["col0"] && history["col0"].includes(" ") && (
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      {history["col0"].split(" ").slice(1).join(" ")}
+                                    </span>
+                                  )}
                                 </div>
-                              ) : (
-                                  <span className="text-gray-400">
-                                    No attachment
+                              </td>
+
+                              {/* 5. Task Description */}
+                              <td className="px-5 py-3.5">
+                                <p className="text-xs font-bold text-slate-800 leading-relaxed break-words max-w-sm">
+                                  {history["col8"] || <span className="text-slate-400 italic">No description</span>}
+                                </p>
+                              </td>
+
+                              {/* 6. Assigned User */}
+                              <td className="px-4 py-3.5 whitespace-nowrap">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-sm uppercase shrink-0">
+                                    {history["col7"] ? history["col7"].trim().charAt(0) : "U"}
+                                  </div>
+                                  <span className="text-xs font-bold text-slate-700 max-w-[120px] truncate" title={history["col7"]}>
+                                    {history["col7"] || "—"}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* 7. Given By */}
+                              <td className="px-4 py-3.5 whitespace-nowrap">
+                                <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
+                                  {history["col9"] || "—"}
+                                </span>
+                              </td>
+
+                              {/* 8. Status */}
+                              <td className="px-4 py-3.5 text-center whitespace-nowrap">
+                                {isDone ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <Check className="w-3 h-3" /> Done
+                                  </span>
+                                ) : isExtend ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                    <Clock className="w-3 h-3" /> Extend Date
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                                    {history["col2"] || "—"}
                                   </span>
                                 )}
                               </td>
-                              {userRole === "admin" && (
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <div className="text-sm text-gray-900">
-                                    {history["col7"] || "—"}
-                                  </div>
-                                </td>
-                              )}
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-gray-900">
-                                  {history["col9"] || "—"}
-                                </div>
+
+                              {/* 9. Next Target Date */}
+                              <td className="px-4 py-3.5 whitespace-nowrap">
+                                <span className="text-xs font-bold text-slate-700">
+                                  {history["col3"] ? history["col3"].split(" ")[0] || history["col3"] : "—"}
+                                </span>
                               </td>
+
+                              {/* 10. Remarks / Reason */}
+                              <td className="px-5 py-3.5">
+                                {editingRemarks[history._id] ? (
+                                  <input
+                                    type="text"
+                                    value={tempRemarks[history._id] !== undefined ? tempRemarks[history._id] : history["col4"] || ""}
+                                    onChange={(e) => setTempRemarks((prev) => ({ ...prev, [history._id]: e.target.value }))}
+                                    placeholder="Enter reason/remarks..."
+                                    className="w-full text-xs p-2 border-2 border-purple-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <p className="text-xs text-slate-600 leading-relaxed break-words max-w-xs font-normal">
+                                    {history["col4"] ? (
+                                      <span>{history["col4"]}</span>
+                                    ) : (
+                                      <span className="text-slate-300 italic">—</span>
+                                    )}
+                                  </p>
+                                )}
+                              </td>
+
+                              {/* 11. Uploaded Attachment / Image Preview */}
+                              <td className="px-4 py-3.5 text-center">
+                                {imgUrls.length > 0 ? (
+                                  <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                    {imgUrls.map((rawUrl, idx) => {
+                                      let displayUrl = rawUrl;
+                                      if (rawUrl.includes("drive.google.com")) {
+                                        const idMatch = rawUrl.match(/id=([a-zA-Z0-9_-]+)/) || rawUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+                                        if (idMatch && idMatch[1]) {
+                                          displayUrl = `https://lh3.googleusercontent.com/d/${idMatch[1]}`;
+                                        }
+                                      }
+
+                                      const isDoc = rawUrl.match(/\.pdf|\.doc|\.docx|\.xls|\.xlsx|\.csv|\.txt|\.zip|\.rar/i);
+
+                                      return (
+                                        <button
+                                          key={idx}
+                                          type="button"
+                                          onClick={() => setPreviewImageUrl(displayUrl)}
+                                          className="relative group w-11 h-11 rounded-xl overflow-hidden shadow-sm border border-slate-200 hover:border-purple-400 hover:shadow-md transition-all flex items-center justify-center bg-slate-50 cursor-pointer"
+                                          title="Click to zoom preview"
+                                        >
+                                          {isDoc ? (
+                                            <div className="flex flex-col items-center justify-center p-1">
+                                              <FileText className="w-5 h-5 text-indigo-500" />
+                                              <span className="text-[8px] font-bold text-slate-500 uppercase">Doc</span>
+                                            </div>
+                                          ) : (
+                                            <>
+                                              <img
+                                                src={displayUrl}
+                                                alt={`Attachment ${idx + 1}`}
+                                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                                                onError={(e) => {
+                                                  e.target.onerror = null;
+                                                  e.target.src = "https://img.icons8.com/color/48/image.png";
+                                                }}
+                                              />
+                                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                <Eye className="w-4 h-4 text-white drop-shadow" />
+                                              </div>
+                                            </>
+                                          )}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-[11px] text-slate-400 font-medium">
+                                    <Paperclip className="w-3 h-3 text-slate-300" />
+                                    <span>No file</span>
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* 12. Admin Done Status */}
                               {userRole === "admin" && (
-                                <td className="px-6 py-4 bg-gray-50 min-w-[140px]">
+                                <td className="px-4 py-3.5 text-center whitespace-nowrap">
                                   {isAdminDone ? (
-                                    <div className="text-sm text-gray-900 break-words">
-                                      <div className="flex items-center">
-                                        <div className="h-4 w-4 rounded border-gray-300 text-green-600 bg-green-100 mr-2 flex items-center justify-center">
-                                          <span className="text-xs text-green-600">
-                                            ✓
-                                          </span>
-                                        </div>
-                                        <div className="flex flex-col">
-                                          <div className="font-medium text-green-700 text-sm">
-                                            Done
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                      <span>Verified</span>
+                                    </span>
                                   ) : (
-                                    <div className="flex items-center text-gray-400 text-sm">
-                                      <div className="h-4 w-4 rounded border-gray-300 mr-2"></div>
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-slate-100 text-slate-500 border border-slate-200">
                                       <span>Pending</span>
-                                    </div>
+                                    </span>
                                   )}
                                 </td>
                               )}
@@ -2000,12 +2191,13 @@ function DelegationDataPage() {
                       ) : (
                         <tr>
                           <td
-                            colSpan={userRole === "admin" ? 12 : 9}
-                            className="px-6 py-4 text-center text-gray-500"
+                            colSpan={userRole === "admin" ? 12 : 10}
+                            className="px-6 py-12 text-center text-slate-400 font-medium"
                           >
-                            {searchTerm || startDate || endDate
-                              ? "No historical records matching your filters"
-                              : "No completed records found"}
+                            <div className="flex flex-col items-center justify-center gap-2">
+                              <History className="w-8 h-8 text-slate-300" />
+                              <span>No historical records found matching your filters</span>
+                            </div>
                           </td>
                         </tr>
                       )}
@@ -2435,6 +2627,58 @@ function DelegationDataPage() {
           onConfirm={confirmMarkDone}
           onCancel={() => setConfirmationModal({ isOpen: false, itemCount: 0 })}
         />
+
+        {/* Image / Attachment Lightbox Modal */}
+        {previewImageUrl && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+            onClick={() => setPreviewImageUrl(null)}
+          >
+            <div
+              className="relative max-w-4xl max-h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white">
+                <div className="flex items-center gap-2">
+                  <Eye className="w-5 h-5 text-purple-400" />
+                  <h3 className="text-base font-bold">Attachment Preview</h3>
+                </div>
+                <div className="flex items-center gap-3">
+                  <a
+                    href={previewImageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors shadow-sm"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Open in New Tab
+                  </a>
+                  <button
+                    onClick={() => setPreviewImageUrl(null)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                    title="Close"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-4 overflow-auto flex items-center justify-center bg-slate-100 min-h-[300px]">
+                <img
+                  src={previewImageUrl}
+                  alt="Attachment Preview"
+                  className="max-h-[75vh] max-w-full object-contain rounded-lg shadow-sm"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = "https://img.icons8.com/color/96/image.png";
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </AdminLayout>
   );
