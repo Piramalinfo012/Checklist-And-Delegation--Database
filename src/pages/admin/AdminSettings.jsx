@@ -156,7 +156,10 @@ export default function AdminSettings() {
   const [isAppsScriptSaved, setIsAppsScriptSaved] = useState(false);
 
   const [targetSheetUrl, setTargetSheetUrl] = useState(() => {
-    return localStorage.getItem('dump_target_sheet_url') || 'https://docs.google.com/spreadsheets/d/1r3YHyjqv24gZXBI9IofAhodnlBuDTA3sgyzU_PNCaQg/edit';
+    const saved = localStorage.getItem('dump_target_sheet_url');
+    if (saved) return saved;
+    const envSheetId = import.meta.env.VITE_SPREADSHEET_ID;
+    return envSheetId ? `https://docs.google.com/spreadsheets/d/${envSheetId}/edit` : 'https://docs.google.com/spreadsheets/d/1r3YHyjqv24gZXBI9IofAhodnlBuDTA3sgyzU_PNCaQg/edit';
   });
   const [isUrlSaved, setIsUrlSaved] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
@@ -207,11 +210,12 @@ export default function AdminSettings() {
     setIsAppsScriptSaved(true);
     setIsUrlSaved(true);
     setSaveSuccessMsg('✅ Google Sheet aur Script URL successfully save ho gaya hai! Ab se data hamesha isi sheet me dump hoga.');
+    alert('✅ Configuration Saved! Ab se aapka live data hamesha isi Google Sheet URL me dump hoga aur login karne par bhi reset nahi hoga.');
     setTimeout(() => {
       setIsAppsScriptSaved(false);
       setIsUrlSaved(false);
       setSaveSuccessMsg('');
-    }, 4500);
+    }, 6000);
   };
 
   // Table Filters & Sorting for Unique Templates
@@ -240,7 +244,14 @@ export default function AdminSettings() {
       if (dCountRes.count !== null) setDelegationCount(dCountRes.count);
       if (calRes.data) setCalendarDates(calRes.data);
       if (holRes.data) setHolidays(holRes.data);
-      if (wRes.data) setUsers(wRes.data);
+      if (wRes.data) {
+        const activeUsers = wRes.data.filter(u => {
+          const name = (u.Username || u['User name'] || '').trim();
+          const role = (u.Role || '').trim().toLowerCase();
+          return !name.startsWith('DELETED_') && role !== 'deleted';
+        });
+        setUsers(activeUsers);
+      }
 
       const savedHistory = JSON.parse(localStorage.getItem('task_trigger_history') || '[]');
       setTriggerHistory(savedHistory);
@@ -521,7 +532,14 @@ export default function AdminSettings() {
         .from('Whatsapp')
         .select('*')
         .order('Username', { ascending: true });
-      if (updatedUsers) setUsers(updatedUsers);
+      if (updatedUsers) {
+        const filtered = updatedUsers.filter(u => {
+          const name = (u.Username || u['User name'] || '').trim();
+          const role = (u.Role || '').trim().toLowerCase();
+          return !name.startsWith('DELETED_') && role !== 'deleted';
+        });
+        setUsers(filtered);
+      }
 
       setTimeout(() => {
         setIsUserModalOpen(false);
@@ -578,61 +596,60 @@ export default function AdminSettings() {
   // Delete user from Whatsapp table
   const handleDeleteUser = async (user) => {
     const targetUsername = (user.Username || user['User name'] || '').trim();
+    const targetNumber = (user.Number || '').trim();
     const confirmDelete = window.confirm(
       `Are you sure you want to permanently delete user ID "${targetUsername}" from Whatsapp table? This cannot be undone.`
     );
     if (!confirmDelete) return;
 
     try {
-      let deleteSuccess = false;
-      let lastError = null;
-
-      // 1. Try deleting by primary key 'id'
+      // 1. Try hard DELETE first
+      let hardDeleted = false;
       if (user.id !== undefined && user.id !== null) {
-        const { error: idErr } = await supabase
+        const { data: dData, error: idErr } = await supabase
           .from('Whatsapp')
           .delete()
-          .eq('id', user.id);
-        if (!idErr) {
-          deleteSuccess = true;
-        } else {
-          lastError = idErr;
-        }
+          .eq('id', user.id)
+          .select();
+        if (!idErr && dData && dData.length > 0) hardDeleted = true;
+      }
+      if (!hardDeleted && targetNumber) {
+        const { data: dData, error: numErr } = await supabase
+          .from('Whatsapp')
+          .delete()
+          .eq('Number', targetNumber)
+          .select();
+        if (!numErr && dData && dData.length > 0) hardDeleted = true;
+      }
+      if (!hardDeleted && targetUsername) {
+        const { data: dData, error: nameErr } = await supabase
+          .from('Whatsapp')
+          .delete()
+          .eq('Username', targetUsername)
+          .select();
+        if (!nameErr && dData && dData.length > 0) hardDeleted = true;
       }
 
-      // 2. Try deleting by exact Username
-      if (!deleteSuccess && targetUsername) {
-        const { error: nameErr } = await supabase
-          .from('Whatsapp')
-          .delete()
-          .eq('Username', targetUsername);
-        if (!nameErr) {
-          deleteSuccess = true;
-        } else {
-          // 3. Try case-insensitive ilike Username
-          const { error: ilikeErr } = await supabase
-            .from('Whatsapp')
-            .delete()
-            .ilike('Username', targetUsername);
-          if (!ilikeErr) {
-            deleteSuccess = true;
-          } else {
-            // 4. Try column 'User name'
-            const { error: spaceErr } = await supabase
-              .from('Whatsapp')
-              .delete()
-              .eq('User name', targetUsername);
-            if (!spaceErr) {
-              deleteSuccess = true;
-            } else {
-              lastError = spaceErr;
-            }
+      // 2. If hard DELETE was not permitted / blocked by Supabase RLS policy,
+      // update the record with 'DELETED' status and rename so it never returns or logs in
+      if (!hardDeleted) {
+        const deletedPayload = {
+          'Role': 'DELETED',
+          'Username': `DELETED_${targetUsername}_${Date.now()}`,
+          'password': '',
+          'Number': targetNumber ? `DEL_${Date.now()}_${targetNumber}` : `DEL_${Date.now()}`
+        };
+
+        if (user.id !== undefined && user.id !== null) {
+          await supabase.from('Whatsapp').update(deletedPayload).eq('id', user.id);
+        } else if (targetNumber) {
+          await supabase.from('Whatsapp').update(deletedPayload).eq('Number', targetNumber);
+        } else if (targetUsername) {
+          const uRes = await supabase.from('Whatsapp').update(deletedPayload).eq('Username', targetUsername);
+          if (uRes.error) {
+            await supabase.from('Whatsapp').update(deletedPayload).ilike('Username', targetUsername);
           }
         }
-      }
-
-      if (!deleteSuccess && lastError) {
-        throw lastError;
       }
 
       // Clear all local caches
@@ -645,7 +662,9 @@ export default function AdminSettings() {
       // Update state immediately
       setUsers(prev => prev.filter(u => {
         const uName = (u.Username || u['User name'] || '').trim();
+        const uNum = (u.Number || '').trim();
         if (user.id !== undefined && u.id !== undefined) return u.id !== user.id;
+        if (targetNumber && uNum === targetNumber) return false;
         return uName.toLowerCase() !== targetUsername.toLowerCase();
       }));
 
@@ -655,7 +674,12 @@ export default function AdminSettings() {
         .select('*')
         .order('Username', { ascending: true });
       if (refreshed) {
-        setUsers(refreshed);
+        const filtered = refreshed.filter(u => {
+          const name = (u.Username || u['User name'] || '').trim();
+          const role = (u.Role || '').trim().toLowerCase();
+          return !name.startsWith('DELETED_') && role !== 'deleted';
+        });
+        setUsers(filtered);
       }
 
     } catch (err) {

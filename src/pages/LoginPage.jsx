@@ -202,11 +202,21 @@ const LoginPage = () => {
             if (typeof window !== 'undefined' && typeof window.clearAllSheetCaches === 'function') {
               window.clearAllSheetCaches();
             }
-            const keysToKeep = ['masterDataCache', 'masterDataCacheTime', 'theme'];
+            const keysToKeep = [
+              'masterDataCache', 
+              'masterDataCacheTime', 
+              'theme', 
+              'dump_target_sheet_url', 
+              'dump_apps_script_url', 
+              'nightly_trigger_hour', 
+              'auto_trigger_on_login', 
+              'auto_trigger_interval', 
+              'task_trigger_history'
+            ];
             const keysToRemove = [];
             for (let i = 0; i < localStorage.length; i++) {
               const key = localStorage.key(i);
-              if (key && !keysToKeep.includes(key)) {
+              if (key && !keysToKeep.includes(key) && (key.startsWith('app_cache_') || key.includes('page_cache_') || key.startsWith('whatsapp_user_cache_'))) {
                 keysToRemove.push(key);
               }
             }
