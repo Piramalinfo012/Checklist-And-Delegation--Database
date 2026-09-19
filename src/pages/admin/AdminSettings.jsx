@@ -885,6 +885,48 @@ export default function AdminSettings() {
     }
   };
 
+  // Delete a recurring template from Unique table
+  const [deletingTemplateId, setDeletingTemplateId] = useState(null);
+
+  const handleDeleteTemplate = async (template) => {
+    const taskId = template['Task ID'] ?? template.id;
+    const desc = template['Task Description'] || template['Tast Descriptions'] || 'This template';
+    const assignee = template.Name || 'Unassigned';
+
+    const confirmDelete = window.confirm(
+      `Are you sure you want to permanently delete Recurring Template #${taskId} ("${desc}" assigned to ${assignee}) from Unique table? This template will no longer generate checklist tasks.`
+    );
+    if (!confirmDelete) return;
+
+    setDeletingTemplateId(taskId);
+    try {
+      let res = await supabase
+        .from('Unique')
+        .delete()
+        .eq('Task ID', taskId)
+        .select();
+
+      if (res.error) {
+        // Fallback by id if needed
+        res = await supabase
+          .from('Unique')
+          .delete()
+          .eq('id', taskId)
+          .select();
+      }
+
+      if (res.error) throw res.error;
+
+      // Update local templates state immediately
+      setTemplates(prev => prev.filter(t => String(t['Task ID'] ?? t.id) !== String(taskId)));
+    } catch (err) {
+      console.error('Failed to delete template:', err);
+      alert(`Failed to delete template: ${err.message || err}`);
+    } finally {
+      setDeletingTemplateId(null);
+    }
+  };
+
   // =========================================================================
   // MANUAL DATA DUMP TO GOOGLE SHEET
   // =========================================================================
@@ -3045,7 +3087,7 @@ export default function AdminSettings() {
                   <th className="py-2.5 px-2 w-20 text-center whitespace-nowrap">Frequency</th>
                   <th className="py-2.5 px-2.5 w-32 whitespace-nowrap">Last Generated</th>
                   <th className="py-2.5 px-2 w-28 text-center whitespace-nowrap" title="Status for Selected Date">Status</th>
-                  <th className="py-2.5 px-3 w-20 text-center whitespace-nowrap" title="Instant Trigger">Trigger</th>
+                  <th className="py-2.5 px-3 w-28 text-center whitespace-nowrap" title="Actions (Run Trigger / Delete Template)">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
@@ -3140,19 +3182,36 @@ export default function AdminSettings() {
                           )}
                         </td>
                         <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                          <button
-                            onClick={() => handleExecuteTrigger(t['Task ID'])}
-                            disabled={isRunningTrigger || runningRowId === t['Task ID']}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-50 shadow-xs cursor-pointer active:scale-95"
-                            title="Generate a task right now for this template"
-                          >
-                            {runningRowId === t['Task ID'] ? (
-                              <RefreshCw className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <Play className="h-3 w-3 fill-current" />
-                            )}
-                            <span>{runningRowId === t['Task ID'] ? 'Running...' : 'Run'}</span>
-                          </button>
+                          <div className="inline-flex items-center gap-1.5 justify-center">
+                            {/* Instant Trigger Run Button */}
+                            <button
+                              onClick={() => handleExecuteTrigger(t['Task ID'])}
+                              disabled={isRunningTrigger || runningRowId === t['Task ID'] || deletingTemplateId === t['Task ID']}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-50 shadow-xs cursor-pointer active:scale-95"
+                              title="Generate a task right now for this template"
+                            >
+                              {runningRowId === t['Task ID'] ? (
+                                <RefreshCw className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Play className="h-3 w-3 fill-current" />
+                              )}
+                              <span>{runningRowId === t['Task ID'] ? 'Running...' : 'Run'}</span>
+                            </button>
+
+                            {/* Delete Recurring Template Button */}
+                            <button
+                              onClick={() => handleDeleteTemplate(t)}
+                              disabled={deletingTemplateId === t['Task ID'] || isRunningTrigger}
+                              className="p-1 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 transition-all disabled:opacity-50 cursor-pointer active:scale-95 border border-rose-200/60"
+                              title={`Delete Template #${t['Task ID']} permanently`}
+                            >
+                              {deletingTemplateId === t['Task ID'] ? (
+                                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
