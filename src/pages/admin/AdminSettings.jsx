@@ -499,14 +499,9 @@ export default function AdminSettings() {
 
       if (isEditingUser) {
         // Update user in Whatsapp table
-        let updateErr = null;
-        if (userFormData.id !== undefined && userFormData.id !== null) {
-          const res = await supabase.from('Whatsapp').update(rowToSave).eq('id', userFormData.id);
-          updateErr = res.error;
-        } else {
-          const res = await supabase.from('Whatsapp').update(rowToSave).ilike('Username', userFormData.originalUsername.trim());
-          updateErr = res.error;
-        }
+        const targetUsername = (userFormData.originalUsername || userFormData.Username || '').trim();
+        const res = await supabase.from('Whatsapp').update(rowToSave).ilike('Username', targetUsername);
+        const updateErr = res.error;
 
         if (updateErr) throw updateErr;
         setUserFormSuccess(`User "${trimmedUsername}" updated successfully!`);

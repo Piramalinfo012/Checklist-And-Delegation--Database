@@ -567,31 +567,24 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
 
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 items-center justify-between px-4 md:px-6 m-3 mb-0 rounded-2xl shadow-sm" style={{ background: 'rgba(255,255,255,0.45)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.5)' }}>
-          <div className="flex md:hidden w-8"></div>
-          <h1 className="text-sm md:text-lg font-bold flex items-center gap-2">
-            <span className="text-slate-700">
-              {(() => {
-                const hour = new Date().getHours()
-                let greeting = "Good Morning"
-                if (hour >= 12 && hour < 18) greeting = "Good Afternoon"
-                else if (hour >= 18) greeting = "Good Evening"
+        {location.pathname !== "/admin" && location.pathname !== "/admin/" && (
+          <header className="flex h-14 items-center justify-between px-4 md:px-6 m-3 mb-0 rounded-2xl shadow-sm" style={{ background: 'rgba(255,255,255,0.45)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.5)' }}>
+            <div className="flex md:hidden w-8"></div>
+            <h1 className="text-sm md:text-lg font-bold flex items-center gap-2">
+              <span className="text-slate-700">
+                {(() => {
+                  const hour = new Date().getHours()
+                  let greeting = "Good Morning"
+                  if (hour >= 12 && hour < 18) greeting = "Good Afternoon"
+                  else if (hour >= 18) greeting = "Good Evening"
 
-                return `${greeting}, ${username ? username.toUpperCase() : "USER"}! Welcome On Board`
-              })()}
-            </span>
-            <span className="animate-bounce inline-block">👋</span>
-          </h1>
-          {/*<button
-            onClick={() => setIsLicenseModalOpen(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"
-            title="License & Help"
-          >
-            <FileText className="h-4 w-4" />
-            <span className="text-sm font-medium">License</span>
-          </button>
-          */}
-        </header>
+                  return `${greeting}, ${username ? username.toUpperCase() : "USER"}! Welcome On Board`
+                })()}
+              </span>
+              <span className="animate-bounce inline-block">👋</span>
+            </h1>
+          </header>
+        )}
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
           <motion.div
             key={location.pathname}

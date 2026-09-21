@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { BarChart3, CheckCircle2, Clock, ListTodo, Users, AlertTriangle, Filter, User, Edit3, Upload, X, ChevronDown, Check, Search } from 'lucide-react'
+import { BarChart3, CheckCircle2, Clock, ListTodo, Users, AlertTriangle, Filter, User, Edit3, Upload, X, ChevronDown, Check, Search, TrendingUp, Calendar, MoreVertical, Bell, HelpCircle, ArrowUpRight, Sparkles, Layers, ShieldCheck, Activity } from 'lucide-react'
 import AdminLayout from "../../components/layout/AdminLayout.jsx"
 import { supabase } from "../../lib/supabaseClient"
+import { uploadImageToCloudinary } from "../../lib/cloudinary"
 import {
   BarChart,
   Bar,
@@ -176,7 +177,8 @@ export default function AdminDashboard() {
       const userRow = (data || []).find(r => (r['User name'] || r.Username || '').toLowerCase() === (username || '').toLowerCase());
       if (userRow) {
         if (userRow['ID'] || userRow.Email) setUserEmail(userRow['ID'] || userRow.Email);
-        if (userRow.Image) setUserProfileImage(userRow.Image);
+        const photo = userRow.Photo || userRow.Image;
+        if (photo) setUserProfileImage(getDisplayableImageUrl(photo));
       }
     } catch (error) {
       console.error("Error fetching profile from Supabase:", error);
@@ -185,6 +187,17 @@ export default function AdminDashboard() {
 
   const getDisplayableImageUrl = (url) => {
     if (!url) return null;
+
+    // Directly return standard web/Cloudinary/data/blob image URLs
+    if (
+      url.includes("cloudinary.com") ||
+      url.includes("ui-avatars.com") ||
+      url.startsWith("blob:") ||
+      url.startsWith("data:") ||
+      (!url.includes("drive.google.com") && (url.startsWith("http://") || url.startsWith("https://")))
+    ) {
+      return url;
+    }
 
     try {
       const ucExportMatch = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
@@ -215,7 +228,7 @@ export default function AdminDashboard() {
       return url.includes("?") ? `${url}&cb=${cacheBuster}` : `${url}?cb=${cacheBuster}`;
     } catch (e) {
       console.error("Error processing image URL:", url, e);
-      return url; // Return original URL as fallback
+      return url;
     }
   };
 
@@ -261,47 +274,34 @@ export default function AdminDashboard() {
       const username = sessionStorage.getItem('username');
 
       if (!username) {
-        throw new Error('Username not found');
+        throw new Error('Username not found in session');
       }
 
-      // Convert file to base64
-      const base64Data = await convertToBase64(selectedFile);
-
-      // Upload to Google Drive and update sheet in one call
-      const uploadResponse = await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          action: 'uploadProfilePhoto',
-          base64Data: base64Data,
-          fileName: `profile_${username}_${Date.now()}.${selectedFile.name.split('.').pop()}`,
-          mimeType: selectedFile.type,
-          folderId: '1txwq9Rhrz5G7348qPtpNX0IGPdGlw6J7', // Your specified folder ID
-          username: username
-        })
-      });
-
-      const uploadResult = await uploadResponse.json();
-
-      if (!uploadResult.success) {
-        throw new Error(uploadResult.error || 'Upload failed');
+      // 1. Upload photo directly to Cloudinary
+      const uploadedUrl = await uploadImageToCloudinary(selectedFile);
+      if (!uploadedUrl) {
+        throw new Error('Could not get image URL from Cloudinary upload');
       }
 
-      // Update local state with the new image
-      const displayableUrl = getDisplayableImageUrl(uploadResult.fileUrl);
-      setUserProfileImage(displayableUrl);
+      // 2. Update Photo in Supabase Whatsapp table
+      const { error: updateErr } = await supabase
+        .from('Whatsapp')
+        .update({ Photo: uploadedUrl })
+        .ilike('Username', username.trim());
 
-      // Close modal and reset
+      if (updateErr) throw updateErr;
+
+      // 3. Update local state with the new image
+      setUserProfileImage(uploadedUrl);
+
+      // 4. Close modal and reset
       setShowImageUploadModal(false);
       setSelectedFile(null);
 
-      alert('Profile image uploaded and updated successfully!');
-
+      alert('Profile photo (DP) uploaded and updated successfully!');
     } catch (error) {
       console.error('Error uploading image:', error);
-      alert('Failed to upload image. Please try again.');
+      alert('Failed to upload profile photo: ' + (error.message || error));
     } finally {
       setUploadingImage(false);
     }
@@ -666,11 +666,19 @@ export default function AdminDashboard() {
       const staffTrackingMap = new Map();
 
       if (Array.isArray(whatsappUsers)) {
+        const loggedInName = (sessionStorage.getItem('username') || '').toLowerCase();
+        const selfUser = whatsappUsers.find(u => (u['User name'] || u.Username || u.name || '').toLowerCase() === loggedInName);
+        if (selfUser && (selfUser.Photo || selfUser.Image)) {
+          setUserProfileImage(getDisplayableImageUrl(selfUser.Photo || selfUser.Image));
+        }
+
         whatsappUsers.forEach(u => {
           const name = (u['User name'] || u.Username || u.name || '').trim();
           if (name && !name.startsWith('DELETED_')) {
             staffTrackingMap.set(name, {
               name,
+              photo: u.Photo || u.Image || '',
+              email: u.Email || '',
               totalTasks: 0,
               completedTasks: 0,
               pendingTasks: 0,
@@ -1048,10 +1056,18 @@ export default function AdminDashboard() {
             ? Math.round((staff.completedTasks / staff.totalTasks) * 100)
             : 0;
 
+        const matchingUser = (whatsappUsers || []).find(
+          u => (u['User name'] || u.Username || '').trim().toLowerCase() === staff.name.trim().toLowerCase()
+        );
+
+        const photo = staff.photo || matchingUser?.Photo || matchingUser?.Image || '';
+        const email = staff.email || matchingUser?.Email || `${staff.name.toLowerCase().replace(/\s+/g, ".")}@example.com`;
+
         return {
           id: staff.name.replace(/\s+/g, "-").toLowerCase(),
           name: staff.name,
-          email: `${staff.name.toLowerCase().replace(/\s+/g, ".")}@example.com`,
+          email: email,
+          photo: photo,
           totalTasks: staff.totalTasks,
           completedTasks: staff.completedTasks,
           pendingTasks: staff.pendingTasks,
@@ -1240,6 +1256,58 @@ export default function AdminDashboard() {
     }
   }
 
+  // Semi-Circle Radial Progress Gauge Component
+  const RadialGauge = ({ percentage = 45 }) => {
+    const validPercent = Math.min(100, Math.max(0, parseFloat(percentage) || 0));
+    const radius = 64;
+    const strokeWidth = 12;
+    const circumference = radius * Math.PI; // Half circle circumference
+    const strokeDashoffset = circumference - (validPercent / 100) * circumference;
+
+    return (
+      <div className="relative flex flex-col items-center justify-center my-2">
+        <svg height="100" width="160" viewBox="0 0 160 100" className="overflow-visible">
+          <defs>
+            <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#38bdf8" />
+              <stop offset="35%" stopColor="#4ade80" />
+              <stop offset="70%" stopColor="#facc15" />
+              <stop offset="100%" stopColor="#fb7185" />
+            </linearGradient>
+            <filter id="gaugeGlow" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="3" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+          </defs>
+          {/* Background Arc */}
+          <path
+            d="M 16,88 A 64,64 0 0,1 144,88"
+            fill="none"
+            stroke="rgba(255,255,255,0.18)"
+            strokeWidth={strokeWidth}
+            strokeLinecap="round"
+          />
+          {/* Active Progress Arc */}
+          <path
+            d="M 16,88 A 64,64 0 0,1 144,88"
+            fill="none"
+            stroke="url(#gaugeGradient)"
+            strokeWidth={strokeWidth}
+            strokeDasharray={`${circumference} ${circumference}`}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            filter="url(#gaugeGlow)"
+            className="transition-all duration-1000 ease-out"
+          />
+        </svg>
+        <div className="absolute top-10 flex flex-col items-center justify-center pointer-events-none">
+          <span className="text-3xl font-black tracking-tight text-white drop-shadow-md">{validPercent}%</span>
+          <span className="text-[10px] uppercase font-bold tracking-widest text-indigo-100/90 mt-0.5">Efficiency</span>
+        </div>
+      </div>
+    );
+  };
+
   // Tasks Overview Chart Component
   const TasksOverviewChart = () => {
     return (
@@ -1334,14 +1402,30 @@ export default function AdminDashboard() {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {departmentData.staffMembers.map((staff) => (
-              <tr key={staff.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">{staff.name}</div>
-                    <div className="text-xs text-gray-500">{staff.email}</div>
-                  </div>
-                </td>
+            {departmentData.staffMembers.map((staff) => {
+              const avatarSrc = staff.photo
+                ? getDisplayableImageUrl(staff.photo)
+                : `https://ui-avatars.com/api/?name=${encodeURIComponent(staff.name || 'U')}&background=6366f1&color=fff&bold=true`;
+
+              return (
+                <tr key={staff.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={avatarSrc}
+                        alt={staff.name}
+                        className="h-10 w-10 rounded-full object-cover border border-slate-200 shadow-sm flex-shrink-0"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(staff.name || 'U')}&background=6366f1&color=fff&bold=true`;
+                        }}
+                      />
+                      <div>
+                        <div className="text-sm font-semibold text-gray-900">{staff.name}</div>
+                        <div className="text-xs text-gray-500">{staff.email}</div>
+                      </div>
+                    </div>
+                  </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{staff.totalTasks}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{staff.completedTasks}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{staff.pendingTasks}</td>
@@ -1369,267 +1453,434 @@ export default function AdminDashboard() {
                   )}
                 </td>
               </tr>
-            ))}
+            );
+            })}
           </tbody>
         </table>
       </div>
     );
   };
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour >= 12 && hour < 18) return "Good Afternoon";
+    if (hour >= 18) return "Good Evening";
+    return "Good Morning";
+  };
+
+  const currentUsername = sessionStorage.getItem('username') || 'User';
+
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        {/* MODIFIED: Updated header section to include profile image */}
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+      <div className="space-y-6 pb-8">
+        
+        {/* ========================================================================= */}
+        {/* 1. TOP GREETING HEADER BANNER (Inspired by reference)                    */}
+        {/* ========================================================================= */}
+        <div className="bg-white/95 backdrop-blur-xl border border-slate-200/80 rounded-[28px] px-6 py-4 shadow-[0_12px_32px_-8px_rgba(110,130,190,0.12)] flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight text-slate-700">
-              CHECKLIST & DELEGATION
-            </h2>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-black text-slate-800 tracking-tight">
+                {getGreeting()}, {currentUsername}
+              </h1>
+              <span className="text-2xl animate-pulse inline-block">👋</span>
+            </div>
+            <p className="text-xs font-semibold text-slate-400 mt-0.5 flex items-center gap-1.5 cursor-pointer hover:text-slate-600 transition-colors">
+              <span>Your daily {dashboardType === "delegation" ? "Delegation & Team" : "Checklist & Task"} overview update</span>
+              <ChevronDown className="h-3.5 w-3.5" />
+            </p>
             {dataLoadError && (
-              <p className="flex items-center gap-1.5 text-xs text-amber-600 mt-1">
+              <p className="flex items-center gap-1.5 text-[11px] text-amber-600 mt-1.5 font-medium">
                 <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse"></span>
-                डेटा लोड करने में समस्या, दोबारा कोशिश जारी है... / Having trouble loading data, retrying automatically...
+                डेटा लोड हो रहा है... / Retrying automatically...
               </p>
             )}
           </div>
-          <div className="flex items-center gap-4">
-            <div className="relative group">
-              {userProfileImage ? (
-                <div className="relative">
-                  <img
-                    src={userProfileImage}
-                    alt="Profile"
-                    className="w-15 h-15 rounded-full object-cover border-2 border-gray-50 cursor-pointer transition-all duration-200 group-hover:brightness-75 shadow-md"
-                    style={{
-                      width: "60px",
-                      height: "60px",
-                      backgroundColor: "#f3f4f6",
-                      objectPosition: "center",
-                    }}
-                    onClick={() => setShowImageUploadModal(true)}
-                    onError={(e) => {
-                      const originalUrl = userProfileImage
-                        .replace("thumbnail?", "uc?export=view&")
-                        .replace("&sz=w150", "");
-                      e.target.src = originalUrl;
-                    }}
-                  />
-                  <div
-                    className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black bg-opacity-30 rounded-full cursor-pointer"
-                    onClick={() => setShowImageUploadModal(true)}
-                  >
-                    <Edit3 className="h-5 w-5 text-white" />
-                  </div>
-                </div>
-              ) : (
-                <div className="relative group">
-                  <div
-                    className="w-15 h-15 rounded-full bg-purple-500 flex items-center justify-center border-2 border-purple-600 cursor-pointer transition-all duration-200 group-hover:brightness-75"
-                    style={{ width: "60px", height: "60px" }}
-                    onClick={() => setShowLinkInputModal(true)}
-                  >
-                    <User className="h-6 w-6 text-white" />
-                  </div>
-                  <div
-                    className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black bg-opacity-30 rounded-full cursor-pointer"
-                    onClick={() => setShowLinkInputModal(true)}
-                  >
-                    <Edit3 className="h-5 w-5 text-white" />
-                  </div>
-                </div>
-              )}
+
+          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+            
+            {/* Quick Search Pill */}
+            <div className="relative hidden sm:block w-48 lg:w-64">
+              <Search className="h-3.5 w-3.5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search anything..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-200/80 rounded-full text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-inner"
+              />
             </div>
 
-            <div className="w-[180px]">
+            {/* Notification / Help Icons */}
+            <div className="flex items-center gap-1.5">
+              <button 
+                title="Notifications"
+                className="p-2 rounded-full bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-700 border border-slate-200/70 transition-all shadow-sm active:scale-95"
+              >
+                <Bell className="h-4 w-4" />
+              </button>
+              <button 
+                title="Help"
+                className="p-2 rounded-full bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-700 border border-slate-200/70 transition-all shadow-sm active:scale-95"
+              >
+                <HelpCircle className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Mode Switcher Dropdown */}
+            <div className="w-[145px]">
               <CustomDropdown
                 value={dashboardType}
                 onChange={setDashboardType}
                 options={[
-                  { value: "checklist", label: "Checklist" },
-                  { value: "delegation", label: "Delegation" }
+                  { value: "checklist", label: "📋 Checklist" },
+                  { value: "delegation", label: "🤝 Delegation" }
                 ]}
                 icon={ListTodo}
-                className="w-full"
+                className="w-full text-xs shadow-sm"
               />
             </div>
+
+            {/* User Profile DP Avatar */}
+            <div 
+              className="relative group cursor-pointer" 
+              onClick={() => setShowImageUploadModal(true)}
+              title="Click to change profile image"
+            >
+              {userProfileImage ? (
+                <div className="relative">
+                  <img
+                    src={userProfileImage}
+                    alt="Profile DP"
+                    className="w-10 h-10 rounded-full object-cover border-2 border-indigo-400/50 shadow-md transition-all group-hover:scale-105 group-hover:ring-2 group-hover:ring-indigo-400"
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUsername)}&background=6366f1&color=fff&bold=true`;
+                    }}
+                  />
+                  <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-white shadow-sm"></div>
+                </div>
+              ) : (
+                <div className="relative">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 text-white flex items-center justify-center font-bold text-sm shadow-md transition-all group-hover:scale-105">
+                    {currentUsername.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-white shadow-sm"></div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <div className="card-3d-wrapper card-3d-blue">
-            <div className="flex flex-row items-center justify-between pb-2">
-              <h3 className="text-xs font-bold text-blue-600 tracking-wider uppercase">
-                Total Tasks
-              </h3>
-              <div className="crystal-orb-3d crystal-orb-blue">
-                <ListTodo className="h-5 w-5" />
-              </div>
-            </div>
-            <div className="pt-1">
-              <div className="text-3xl font-extrabold text-slate-800 number-3d-text">
-                {departmentData.totalTasks}
-              </div>
-              <p className="text-slate-400 text-xs mt-1.5 font-medium">
-                {dashboardType === "delegation"
-                  ? `${isAdminUser()
-                    ? "All tasks in delegation sheet"
-                    : "Your tasks in delegation sheet"
-                  }`
-                  : `${isAdminUser()
-                    ? "Total tasks in checklist (up to today)"
-                    : "Your tasks in checklist (up to today)"
-                  }`}
-              </p>
-            </div>
+        {/* ========================================================================= */}
+        {/* 2. SUMMARY CARDS ROW (Bills section in reference with colored ribbons)   */}
+        {/* ========================================================================= */}
+        <div>
+          <div className="flex items-center justify-between mb-3 px-1">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+              <span>Task & Activity Metrics</span>
+            </h2>
+            <ChevronDown className="h-4 w-4 text-slate-400" />
           </div>
 
-          <div className="card-3d-wrapper card-3d-emerald">
-            <div className="flex flex-row items-center justify-between pb-2">
-              <h3 className="text-xs font-bold text-emerald-600 tracking-wider uppercase">
-                {dashboardType === "delegation"
-                  ? "Completed Once"
-                  : "Completed Tasks"}
-              </h3>
-              <div className="crystal-orb-3d crystal-orb-emerald">
-                <CheckCircle2 className="h-5 w-5" />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            
+            {/* Card 1: Total Tasks (Blue / Indigo Accent Ribbon) */}
+            <div className="bg-white/95 rounded-3xl p-5 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70 hover:-translate-y-1 hover:shadow-[0_18px_35px_-8px_rgba(99,102,241,0.18)] transition-all duration-300 relative overflow-hidden group">
+              <div className="absolute right-0 top-0 bottom-0 w-2.5 bg-gradient-to-b from-blue-500 to-indigo-600 rounded-r-3xl"></div>
+              
+              <div className="flex items-start justify-between">
+                <div className="p-3 rounded-2xl bg-blue-50 text-blue-600 shadow-sm group-hover:scale-105 transition-transform">
+                  <Calendar className="h-5 w-5" />
+                </div>
+                <div className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-extrabold border border-blue-100 flex items-center gap-1">
+                  <span>100%</span>
+                  <ArrowUpRight className="h-3 w-3" />
+                </div>
               </div>
-            </div>
-            <div className="pt-1">
-              <div className="text-3xl font-extrabold text-slate-800 number-3d-text">
-                {dashboardType === "delegation"
-                  ? departmentData.completedRatingOne
-                  : departmentData.completedTasks}
-              </div>
-              <p className="text-xs text-slate-400 mt-1.5 font-medium">
-                {dashboardType === "delegation"
-                  ? "Tasks completed once"
-                  : "Total completed till date"}
-              </p>
-            </div>
-          </div>
 
-          <div className="card-3d-wrapper card-3d-amber">
-            <div className="flex flex-row items-center justify-between pb-2">
-              <h3 className="text-xs font-bold text-amber-600 tracking-wider uppercase">
-                {dashboardType === "delegation"
-                  ? "Completed Twice"
-                  : "Pending Tasks"}
-              </h3>
-              <div className="crystal-orb-3d crystal-orb-amber">
-                {dashboardType === "delegation" ? (
+              <div className="mt-4">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Tasks</span>
+                <div className="text-3xl font-black text-slate-800 tracking-tight mt-0.5 flex items-baseline gap-2">
+                  <span>{departmentData.totalTasks}</span>
+                  <span className="text-xs font-bold text-slate-400">active</span>
+                </div>
+                <p className="text-[11px] font-medium text-slate-400 mt-1">
+                  {dashboardType === "delegation" ? "All delegation tasks" : "Checklist tasks (up to today)"}
+                </p>
+              </div>
+            </div>
+
+            {/* Card 2: Completed Tasks (Teal / Emerald Accent Ribbon) */}
+            <div className="bg-white/95 rounded-3xl p-5 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70 hover:-translate-y-1 hover:shadow-[0_18px_35px_-8px_rgba(16,185,129,0.18)] transition-all duration-300 relative overflow-hidden group">
+              <div className="absolute right-0 top-0 bottom-0 w-2.5 bg-gradient-to-b from-teal-400 to-emerald-600 rounded-r-3xl"></div>
+              
+              <div className="flex items-start justify-between">
+                <div className="p-3 rounded-2xl bg-emerald-50 text-emerald-600 shadow-sm group-hover:scale-105 transition-transform">
                   <CheckCircle2 className="h-5 w-5" />
-                ) : (
+                </div>
+                <div className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-extrabold border border-emerald-100 flex items-center gap-1">
+                  <span>+{departmentData.completionRate}%</span>
+                  <ArrowUpRight className="h-3 w-3" />
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  {dashboardType === "delegation" ? "Completed Once" : "Completed Tasks"}
+                </span>
+                <div className="text-3xl font-black text-emerald-600 tracking-tight mt-0.5 flex items-baseline gap-2">
+                  <span>{dashboardType === "delegation" ? departmentData.completedRatingOne : departmentData.completedTasks}</span>
+                  <span className="text-xs font-bold text-slate-400">done</span>
+                </div>
+                <p className="text-[11px] font-medium text-slate-400 mt-1">
+                  {dashboardType === "delegation" ? "Delegations closed once" : "Successfully verified"}
+                </p>
+              </div>
+            </div>
+
+            {/* Card 3: Pending Tasks (Amber / Orange Accent Ribbon) */}
+            <div className="bg-white/95 rounded-3xl p-5 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70 hover:-translate-y-1 hover:shadow-[0_18px_35px_-8px_rgba(245,158,11,0.18)] transition-all duration-300 relative overflow-hidden group">
+              <div className="absolute right-0 top-0 bottom-0 w-2.5 bg-gradient-to-b from-amber-400 to-orange-500 rounded-r-3xl"></div>
+              
+              <div className="flex items-start justify-between">
+                <div className="p-3 rounded-2xl bg-amber-50 text-amber-600 shadow-sm group-hover:scale-105 transition-transform">
                   <Clock className="h-5 w-5" />
-                )}
+                </div>
+                <div className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-extrabold border border-amber-100 flex items-center gap-1">
+                  <span>{departmentData.totalTasks > 0 ? Math.round((departmentData.pendingTasks / departmentData.totalTasks) * 100) : 0}%</span>
+                </div>
               </div>
-            </div>
-            <div className="pt-1">
-              <div className="text-3xl font-extrabold text-slate-800 number-3d-text">
-                {dashboardType === "delegation"
-                  ? departmentData.completedRatingTwo
-                  : departmentData.pendingTasks}
-              </div>
-              <p className="text-xs text-slate-400 mt-1.5 font-medium">
-                {dashboardType === "delegation"
-                  ? "Tasks completed twice"
-                  : "Including today + overdue"}
-              </p>
-            </div>
-          </div>
 
-          <div className="card-3d-wrapper card-3d-rose">
-            <div className="flex flex-row items-center justify-between pb-2">
-              <h3 className="text-xs font-bold text-rose-600 tracking-wider uppercase">
-                {dashboardType === "delegation"
-                  ? "Completed 3+ Times"
-                  : "Overdue Tasks"}
-              </h3>
-              <div className="crystal-orb-3d crystal-orb-rose">
-                {dashboardType === "delegation" ? (
-                  <CheckCircle2 className="h-5 w-5" />
-                ) : (
+              <div className="mt-4">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  {dashboardType === "delegation" ? "Completed Twice" : "Pending Tasks"}
+                </span>
+                <div className="text-3xl font-black text-amber-600 tracking-tight mt-0.5 flex items-baseline gap-2">
+                  <span>{dashboardType === "delegation" ? departmentData.completedRatingTwo : departmentData.pendingTasks}</span>
+                  <span className="text-xs font-bold text-slate-400">pending</span>
+                </div>
+                <p className="text-[11px] font-medium text-slate-400 mt-1">
+                  {dashboardType === "delegation" ? "Tasks completed twice" : "Today & active overdue"}
+                </p>
+              </div>
+            </div>
+
+            {/* Card 4: Overdue Tasks (Rose / Pink Accent Ribbon) */}
+            <div className="bg-white/95 rounded-3xl p-5 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70 hover:-translate-y-1 hover:shadow-[0_18px_35px_-8px_rgba(244,63,94,0.18)] transition-all duration-300 relative overflow-hidden group">
+              <div className="absolute right-0 top-0 bottom-0 w-2.5 bg-gradient-to-b from-rose-400 to-pink-600 rounded-r-3xl"></div>
+              
+              <div className="flex items-start justify-between">
+                <div className="p-3 rounded-2xl bg-rose-50 text-rose-600 shadow-sm group-hover:scale-105 transition-transform">
                   <AlertTriangle className="h-5 w-5" />
-                )}
+                </div>
+                <div className="px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 text-[10px] font-extrabold border border-rose-100 flex items-center gap-1">
+                  <span>{departmentData.overdueTasks > 0 ? `-${departmentData.overdueTasks}` : '0'}</span>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  {dashboardType === "delegation" ? "Completed 3+ Times" : "Overdue Tasks"}
+                </span>
+                <div className="text-3xl font-black text-rose-600 tracking-tight mt-0.5 flex items-baseline gap-2">
+                  <span>{dashboardType === "delegation" ? departmentData.completedRatingThreePlus : departmentData.overdueTasks}</span>
+                  <span className="text-xs font-bold text-slate-400">action</span>
+                </div>
+                <p className="text-[11px] font-medium text-slate-400 mt-1">
+                  {dashboardType === "delegation" ? "Mastered tasks (3+ times)" : "Past due dates"}
+                </p>
               </div>
             </div>
-            <div className="pt-1">
-              <div className="text-3xl font-extrabold text-slate-800 number-3d-text">
-                {dashboardType === "delegation"
-                  ? departmentData.completedRatingThreePlus
-                  : departmentData.overdueTasks}
-              </div>
-              <p className="text-xs text-slate-400 mt-1.5 font-medium">
-                {dashboardType === "delegation"
-                  ? "Tasks completed 3+ times"
-                  : "Past due (excluding today)"}
-              </p>
-            </div>
+
           </div>
         </div>
 
-        {/* Task Navigation Tabs - Restored to 3 tabs for both modes */}
-        <div className="w-full overflow-hidden rounded-2xl shadow-sm" style={{ background: 'rgba(255,255,255,0.55)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.6)' }}>
-          <div className="grid grid-cols-3 p-1.5 gap-1" style={{ background: 'rgba(255,255,255,0.3)' }}>
+        {/* ========================================================================= */}
+        {/* 3. SHOWCASE SECTION (Hero Radial Gauge Card + Center Metric + Bar Chart)  */}
+        {/* ========================================================================= */}
+        <div>
+          <div className="flex items-center justify-between mb-3 px-1">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+              <span>Performance Analytics & Visual Gauge</span>
+            </h2>
+            <ChevronDown className="h-4 w-4 text-slate-400" />
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-12 items-stretch">
+            
+            {/* LEFT HERO CARD: Violet Gradient Phone-Card with Radial Gauge */}
+            <div className="lg:col-span-4 bg-gradient-to-br from-[#4338ca] via-[#6366f1] to-[#7e22ce] text-white rounded-3xl p-6 shadow-[0_20px_40px_-12px_rgba(99,102,241,0.4)] relative overflow-hidden flex flex-col justify-between min-h-[340px]">
+              
+              {/* Subtle phone notch curve decoration */}
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-28 h-4 bg-slate-900/20 rounded-b-2xl backdrop-blur-md"></div>
+              
+              <div className="flex items-center justify-between relative z-10">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-white/10 backdrop-blur-md">
+                    <Activity className="h-4 w-4 text-white" />
+                  </div>
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-indigo-100">Completion Meter</span>
+                </div>
+                <button className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors">
+                  <MoreVertical className="h-4 w-4 text-white" />
+                </button>
+              </div>
+
+              {/* Center Semi-Circle Radial Progress Gauge */}
+              <div className="my-auto py-2">
+                <RadialGauge percentage={departmentData.completionRate} />
+              </div>
+
+              {/* Bottom Quick Stats */}
+              <div className="relative z-10 pt-3 border-t border-white/15">
+                <span className="text-[11px] font-semibold text-indigo-200">Pending Execution</span>
+                <div className="text-2xl font-black tracking-tight text-white mt-0.5">
+                  {departmentData.pendingTasks} <span className="text-xs font-medium text-indigo-200">Tasks Remaining</span>
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-indigo-200/90 mt-2">
+                  <span>Total Workload: {departmentData.totalTasks}</span>
+                  <span className="font-bold text-emerald-300">✓ {departmentData.completedTasks} Done</span>
+                </div>
+              </div>
+            </div>
+
+            {/* CENTER STACKED METRIC CARDS */}
+            <div className="lg:col-span-3 flex flex-col gap-4">
+              
+              {/* Top Stacked Card */}
+              <div className="flex-1 bg-white/95 rounded-3xl p-5 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70 hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden flex flex-col justify-between group">
+                <div className="absolute right-0 top-0 bottom-0 w-2 bg-gradient-to-b from-cyan-400 to-blue-500 rounded-r-3xl"></div>
+                <div className="flex items-start justify-between">
+                  <div className="p-2.5 rounded-2xl bg-cyan-50 text-cyan-600">
+                    <ShieldCheck className="h-5 w-5" />
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold">
+                    +5% MoM
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Efficiency Index</span>
+                  <div className="text-2xl font-black text-slate-800 tracking-tight mt-0.5">
+                    {departmentData.completionRate}%
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-medium">Monthly calculated velocity</span>
+                </div>
+              </div>
+
+              {/* Bottom Stacked Card */}
+              <div className="flex-1 bg-white/95 rounded-3xl p-5 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70 hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden flex flex-col justify-between group">
+                <div className="absolute right-0 top-0 bottom-0 w-2 bg-gradient-to-b from-purple-500 to-indigo-600 rounded-r-3xl"></div>
+                <div className="flex items-start justify-between">
+                  <div className="p-2.5 rounded-2xl bg-purple-50 text-purple-600">
+                    <Layers className="h-5 w-5" />
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 text-[10px] font-bold border border-purple-100">
+                    Active
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Staff Allocation</span>
+                  <div className="text-2xl font-black text-slate-800 tracking-tight mt-0.5">
+                    {departmentData.staffMembers.length} Members
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-medium">Assigned active staff pipeline</span>
+                </div>
+              </div>
+
+            </div>
+
+            {/* RIGHT ACTIVITY BAR CHART CARD */}
+            <div className="lg:col-span-5 bg-white/95 rounded-3xl p-6 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70 flex flex-col justify-between">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                    <span>Task Activity & Trend</span>
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+                      Sep 2026
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Completed vs Pending monthly distribution</p>
+                </div>
+                <button className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+                  <MoreVertical className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="pt-4 h-[240px]">
+                <TasksOverviewChart />
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        {/* ========================================================================= */}
+        {/* 4. TASK NAVIGATION TABS & WORKFLOW FILTER SECTION                         */}
+        {/* ========================================================================= */}
+        <div className="w-full overflow-hidden rounded-3xl bg-white/95 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70">
+          <div className="grid grid-cols-3 p-2 gap-1.5 bg-slate-50/80 border-b border-slate-100">
             <button
-              className={`py-2.5 text-center text-sm font-medium rounded-xl transition-all duration-200 ${taskView === "recent"
-                ? "bg-slate-800 text-white shadow-md"
-                : "text-slate-500 hover:bg-white/60"
-                }`}
+              className={`py-3 text-center text-xs font-bold rounded-2xl transition-all duration-200 ${
+                taskView === "recent"
+                  ? "bg-slate-900 text-white shadow-md shadow-slate-900/20"
+                  : "text-slate-600 hover:bg-white/80"
+              }`}
               onClick={() => setTaskView("recent")}
             >
-              {dashboardType === "delegation" ? "Today Tasks" : "Recent Tasks"}
+              {dashboardType === "delegation" ? "📋 Today Tasks" : "⚡ Recent Tasks"}
             </button>
             <button
-              className={`py-2.5 text-center text-sm font-medium rounded-xl transition-all duration-200 ${taskView === "upcoming"
-                ? "bg-slate-800 text-white shadow-md"
-                : "text-slate-500 hover:bg-white/60"
-                }`}
+              className={`py-3 text-center text-xs font-bold rounded-2xl transition-all duration-200 ${
+                taskView === "upcoming"
+                  ? "bg-slate-900 text-white shadow-md shadow-slate-900/20"
+                  : "text-slate-600 hover:bg-white/80"
+              }`}
               onClick={() => setTaskView("upcoming")}
             >
-              {dashboardType === "delegation"
-                ? "Future Tasks"
-                : "Upcoming Tasks"}
+              {dashboardType === "delegation" ? "🔮 Future Tasks" : "📅 Upcoming Tasks"}
             </button>
             <button
-              className={`py-2.5 text-center text-sm font-medium rounded-xl transition-all duration-200 ${taskView === "overdue"
-                ? "bg-slate-800 text-white shadow-md"
-                : "text-slate-500 hover:bg-white/60"
-                }`}
+              className={`py-3 text-center text-xs font-bold rounded-2xl transition-all duration-200 ${
+                taskView === "overdue"
+                  ? "bg-rose-600 text-white shadow-md shadow-rose-600/20"
+                  : "text-rose-600 hover:bg-rose-50"
+              }`}
               onClick={() => setTaskView("overdue")}
             >
-              Overdue Tasks
+              🚨 Overdue Tasks ({departmentData.overdueTasks})
             </button>
           </div>
 
-          <div className="p-4">
+          <div className="p-5">
             <div className="flex flex-col gap-4 md:flex-row mb-4">
-              <div className="flex-1 space-y-2">
+              <div className="flex-1 space-y-1.5">
                 <label
                   htmlFor="search"
-                  className="flex items-center text-purple-700 font-semibold text-sm"
+                  className="flex items-center text-slate-700 font-bold text-xs"
                 >
-                  <Search className="h-4 w-4 mr-2 text-purple-600" />
+                  <Search className="h-3.5 w-3.5 mr-1.5 text-indigo-600" />
                   Search Tasks
                 </label>
                 <div className="relative">
                   <input
                     id="search"
-                    placeholder="Search by task title or ID"
+                    placeholder="Search by task title, department or ID..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3 rounded-full bg-slate-100 hover:bg-slate-200/70 focus:bg-white text-slate-800 font-medium placeholder:text-slate-500 border-2 border-slate-300 hover:border-slate-400 shadow-sm focus:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-500/30 transition-all duration-200"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-slate-50 hover:bg-slate-100/70 focus:bg-white text-slate-800 text-xs font-medium placeholder:text-slate-400 border border-slate-200 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
                   />
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                    <Search className="h-5 w-5 text-slate-500" />
+                    <Search className="h-4 w-4 text-slate-400" />
                   </div>
                 </div>
               </div>
-              <div className="space-y-2 md:w-[200px]">
+              <div className="space-y-1.5 md:w-[220px]">
                 <label
                   htmlFor="staff-filter"
-                  className="flex items-center text-purple-700 font-semibold text-sm"
+                  className="flex items-center text-slate-700 font-bold text-xs"
                 >
-                  <Filter className="h-4 w-4 mr-2 text-purple-600" />
+                  <Filter className="h-3.5 w-3.5 mr-1.5 text-indigo-600" />
                   Filter by Staff
                 </label>
                 <CustomDropdown
@@ -1654,72 +1905,53 @@ export default function AdminDashboard() {
             </div>
 
             {getTasksByView(taskView).length === 0 ? (
-              <div className="text-center p-8 text-gray-500">
-                <p>No tasks found matching your filters.</p>
+              <div className="text-center py-12 text-slate-400 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                <ListTodo className="h-8 w-8 mx-auto text-slate-300 mb-2" />
+                <p className="text-xs font-semibold">No tasks found matching your filters.</p>
               </div>
             ) : (
               <div
-                className="overflow-x-auto"
-                style={{ maxHeight: "400px", overflowY: "auto" }}
+                className="overflow-x-auto rounded-2xl border border-slate-100"
+                style={{ maxHeight: "380px", overflowY: "auto" }}
               >
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50 sticky top-0 z-10">
+                <table className="min-w-full divide-y divide-slate-100">
+                  <thead className="bg-slate-50/90 sticky top-0 z-10 backdrop-blur-md">
                     <tr>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
+                      <th scope="col" className="px-5 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                         Task ID
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
+                      <th scope="col" className="px-5 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                         Task Description
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
+                      <th scope="col" className="px-5 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                         Assigned To
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
-                        Task Start Date
+                      <th scope="col" className="px-5 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        Start Date
                       </th>
-                      <th
-                        scope="col"
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
+                      <th scope="col" className="px-5 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                         Frequency
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="bg-white divide-y divide-slate-100">
                     {getTasksByView(taskView).map((task) => (
-                      <tr key={task.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {task.id}
+                      <tr key={task.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-5 py-3.5 whitespace-nowrap text-xs font-bold text-indigo-600">
+                          #{task.id}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-5 py-3.5 text-xs font-medium text-slate-800 max-w-xs truncate">
                           {task.title}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-5 py-3.5 whitespace-nowrap text-xs text-slate-600 font-semibold">
                           {task.assignedTo}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-5 py-3.5 whitespace-nowrap text-xs text-slate-500 font-medium">
                           {task.taskStartDate}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs font-medium ${getFrequencyColor(
-                              task.frequency
-                            )}`}
-                          >
-                            {task.frequency.charAt(0).toUpperCase() +
-                              task.frequency.slice(1)}
+                        <td className="px-5 py-3.5 whitespace-nowrap">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${getFrequencyColor(task.frequency)}`}>
+                            {task.frequency.charAt(0).toUpperCase() + task.frequency.slice(1)}
                           </span>
                         </td>
                       </tr>
@@ -1731,119 +1963,74 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-1">
-          <div className="rounded-2xl shadow-sm hover:shadow-md transition-all duration-300" style={{ background: 'rgba(255,255,255,0.55)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.6)' }}>
-            <div className="flex flex-row items-center justify-between p-4 pb-2">
-              <h3 className="text-sm font-medium text-indigo-600">
-                Task Completion Rate
-              </h3>
-              <div className="h-8 w-8 rounded-xl flex items-center justify-center" style={{ background: 'rgba(99,102,241,0.1)' }}>
-                <BarChart3 className="h-4 w-4 text-indigo-500" />
-              </div>
-            </div>
-            <div className="p-4 pt-1">
-              <div className="flex items-center justify-between">
-                <div className="text-3xl font-bold text-slate-800">
-                  {departmentData.completionRate}%
-                </div>
-                <div className="flex items-center space-x-2">
-                  <span className="inline-block w-3 h-3 bg-emerald-500 rounded-full"></span>
-                  <span className="text-xs text-slate-500">
-                    Completed: {departmentData.completedTasks}
-                  </span>
-                  <span className="inline-block w-3 h-3 bg-amber-500 rounded-full"></span>
-                  <span className="text-xs text-slate-500">
-                    Total: {departmentData.totalTasks}
-                  </span>
-                </div>
-              </div>
-              <div className="w-full h-2 rounded-full mt-2" style={{ background: 'rgba(0,0,0,0.06)' }}>
-                <div
-                  className="h-full bg-gradient-to-r from-emerald-500 to-amber-400 rounded-full transition-all duration-500"
-                  style={{ width: `${departmentData.completionRate}%` }}
-                ></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Tabs */}
+        {/* ========================================================================= */}
+        {/* 5. TABS (OVERVIEW / MIS / STAFF PERFORMANCE)                              */}
+        {/* ========================================================================= */}
         <div className="space-y-4">
-          <div className="rounded-2xl p-1.5 flex space-x-1" style={{ background: 'rgba(255,255,255,0.4)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.5)' }}>
+          <div className="bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-2xl p-1.5 flex space-x-1 shadow-sm">
             <button
               onClick={() => setActiveTab("overview")}
-              className={`flex-1 py-2.5 text-center text-sm font-medium rounded-xl transition-all duration-200 ${activeTab === "overview"
-                ? "bg-slate-800 text-white shadow-md"
-                : "text-slate-500 hover:bg-white/60"
-                }`}
+              className={`flex-1 py-2.5 text-center text-xs font-bold rounded-xl transition-all duration-200 ${
+                activeTab === "overview"
+                  ? "bg-slate-900 text-white shadow-md"
+                  : "text-slate-600 hover:bg-slate-100"
+              }`}
             >
-              Overview
+              📊 Staff Performance Summary
             </button>
             <button
               onClick={() => setActiveTab("mis")}
-              className={`flex-1 py-2.5 text-center text-sm font-medium rounded-xl transition-all duration-200 ${activeTab === "mis"
-                ? "bg-slate-800 text-white shadow-md"
-                : "text-slate-500 hover:bg-white/60"
-                }`}
+              className={`flex-1 py-2.5 text-center text-xs font-bold rounded-xl transition-all duration-200 ${
+                activeTab === "mis"
+                  ? "bg-slate-900 text-white shadow-md"
+                  : "text-slate-600 hover:bg-slate-100"
+              }`}
             >
-              MIS Report
+              📑 MIS Report
             </button>
             <button
               onClick={() => setActiveTab("staff")}
-              className={`flex-1 py-2.5 text-center text-sm font-medium rounded-xl transition-all duration-200 ${activeTab === "staff"
-                ? "bg-slate-800 text-white shadow-md"
-                : "text-slate-500 hover:bg-white/60"
-                }`}
+              className={`flex-1 py-2.5 text-center text-xs font-bold rounded-xl transition-all duration-200 ${
+                activeTab === "staff"
+                  ? "bg-slate-900 text-white shadow-md"
+                  : "text-slate-600 hover:bg-slate-100"
+              }`}
             >
-              Staff Performance
+              👥 Category Distribution
             </button>
           </div>
 
           {activeTab === "overview" && (
-            <div className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-                <div className="lg:col-span-4 rounded-2xl shadow-sm" style={{ background: 'rgba(255,255,255,0.55)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.6)' }}>
-                  <div className="p-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.4)' }}>
-                    <h3 className="text-slate-700 font-semibold">
-                      Tasks Overview
-                    </h3>
-                    <p className="text-slate-400 text-sm">
-                      Task completion rate over time
-                    </p>
-                  </div>
-                  <div className="p-4 pl-2">
-                    <TasksOverviewChart />
-                  </div>
-                </div>
-                <div className="lg:col-span-3 rounded-2xl shadow-sm" style={{ background: 'rgba(255,255,255,0.55)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.6)' }}>
-                  <div className="p-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.4)' }}>
-                    <h3 className="text-slate-700 font-semibold">
-                      Task Status
-                    </h3>
-                    <p className="text-slate-400 text-sm">
-                      Distribution of tasks by status
-                    </p>
-                  </div>
-                  <div className="p-4">
-                    <TasksCompletionChart />
-                  </div>
-                </div>
-              </div>
-              <div className="rounded-2xl shadow-sm" style={{ background: 'rgba(255,255,255,0.55)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.6)' }}>
-                <div className="p-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.4)' }}>
-                  <h3 className="text-slate-700 font-semibold">
-                    Staff Task Summary
+            <div className="bg-white/95 rounded-3xl p-6 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70">
+              <div className="pb-4 mb-4 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+                    <span>Staff Task Summary</span>
                   </h3>
-                  <p className="text-slate-400 text-sm">
-                    Overview of tasks assigned to each staff member
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Overview of tasks assigned to each staff member with photo and live performance
                   </p>
                 </div>
-                <div className="p-4">
-                  <StaffTasksTable />
-                </div>
+              </div>
+              <StaffTasksTable />
+            </div>
+          )}
+
+          {activeTab === "staff" && (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="bg-white/95 rounded-3xl p-6 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70">
+                <h3 className="text-sm font-bold text-slate-800 mb-1">Status Breakdown</h3>
+                <p className="text-xs text-slate-400 mb-4">Completed, Pending & Overdue tasks</p>
+                <TasksCompletionChart />
+              </div>
+              <div className="bg-white/95 rounded-3xl p-6 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70">
+                <h3 className="text-sm font-bold text-slate-800 mb-1">Monthly Workload Trend</h3>
+                <p className="text-xs text-slate-400 mb-4">Monthly completed vs pending comparison</p>
+                <TasksOverviewChart />
               </div>
             </div>
           )}
+
 
           {/* UPDATED: Modified MIS Report section for delegation mode */}
           {activeTab === "mis" && (
