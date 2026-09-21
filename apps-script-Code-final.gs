@@ -1200,3 +1200,214 @@ function isSameDate(date1, date2) {
     date1.getFullYear() === date2.getFullYear();
 }
 
+// ---------------------------------------------------------------------------
+// DAILY DOER TASK REPORT (dumps into sheet "Task")
+// Columns: Doer's Name | Total Task | Total Pending | Today Task | Number
+//   - Source        = Supabase tables "Checklist" + "Delegation" (combined),
+//                      NOT the Google Sheet tabs, so counts always match the
+//                      live app/dashboard data.
+//   - Total Task    = every row ever recorded for that doer, across both tables
+//   - Total Pending = rows for that doer where "Actual" is blank
+//   - Today Task    = of those pending rows, how many are due today ("Task Start Date")
+//   - Number        = looked up from the "Whatsapp" sheet by matching name
+//
+// To activate the daily automatic dump: open this script in the Apps Script
+// editor, select "setupDoerTaskReportTrigger" in the function dropdown, and
+// click Run once. That installs a time-based trigger that reruns
+// generateDoerTaskReport() every day automatically (default 7:00 AM IST).
+// ---------------------------------------------------------------------------
+
+// Fetches ALL rows of a Supabase table (paginated via the PostgREST Range
+// header, 1000 rows per page) with only the given columns selected.
+function fetchAllFromSupabase(tableName, selectColumns) {
+  var pageSize = 1000;
+  var allRows = [];
+  var start = 0;
+
+  while (true) {
+    var url = SUPABASE_URL + "/rest/v1/" + encodeURIComponent(tableName) +
+      "?select=" + encodeURIComponent(selectColumns);
+    var response = UrlFetchApp.fetch(url, {
+      method: "get",
+      headers: {
+        "apikey": SUPABASE_KEY,
+        "Authorization": "Bearer " + SUPABASE_KEY,
+        "Range-Unit": "items",
+        "Range": start + "-" + (start + pageSize - 1)
+      },
+      muteHttpExceptions: true
+    });
+
+    var pageData = [];
+    try {
+      pageData = JSON.parse(response.getContentText() || "[]");
+    } catch (parseErr) {
+      break;
+    }
+    if (!Array.isArray(pageData) || pageData.length === 0) break;
+
+    allRows = allRows.concat(pageData);
+    if (pageData.length < pageSize) break; // last page reached
+    start += pageSize;
+  }
+
+  return allRows;
+}
+
+function generateDoerTaskReport() {
+  try {
+    var todayString = Utilities.formatDate(new Date(), "Asia/Kolkata", "dd/MM/yyyy");
+
+    // Pull only the 3 columns we need from each Supabase table.
+    var checklistRows = fetchAllFromSupabase("Checklist", "Name,Task Start Date,Actual");
+    var delegationRows = fetchAllFromSupabase("Delegation", "Name,Task Start Date,Actual");
+
+    // Aggregate per doer, combining both tables into the same totals.
+    var doerMap = {};
+    var tallyRows = function(rows) {
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        var name = (r["Name"] || "").toString().trim();
+        if (!name) continue;
+
+        var startDate = (r["Task Start Date"] || "").toString().trim();
+        var actual = (r["Actual"] || "").toString().trim();
+        var isPending = actual === "";
+
+        var key = name.toLowerCase();
+        if (!doerMap[key]) {
+          doerMap[key] = { name: name, total: 0, pending: 0, today: 0 };
+        }
+        doerMap[key].total++;
+        if (isPending) {
+          doerMap[key].pending++;
+          if (startDate === todayString) {
+            doerMap[key].today++;
+          }
+        }
+      }
+    };
+    tallyRows(checklistRows);
+    tallyRows(delegationRows);
+
+    var ss = getSpreadsheet();
+
+    // Look up each doer's phone number from the "Whatsapp" sheet by matching
+    // their name against whichever column holds the name/number (detected by
+    // header text, so it keeps working even if column order changes). Also
+    // build the set of ACTIVE user names (excludes DELETED_/deleted-role rows)
+    // so the report only includes currently active user IDs.
+    var phoneByName = {};
+    var activeNameSet = {};
+    var whatsappSheet = ss.getSheetByName("Whatsapp");
+    if (whatsappSheet && whatsappSheet.getLastRow() > 1) {
+      var wLastCol = whatsappSheet.getLastColumn();
+      var wData = whatsappSheet.getRange(1, 1, whatsappSheet.getLastRow(), wLastCol).getDisplayValues();
+      var wHeaders = wData[0];
+      var nameColIdx = -1, numberColIdx = -1, roleColIdx = -1;
+      for (var h = 0; h < wHeaders.length; h++) {
+        var headerLower = (wHeaders[h] || "").toString().toLowerCase().trim();
+        if (nameColIdx === -1 && (headerLower === "user name" || headerLower === "username")) nameColIdx = h;
+        if (numberColIdx === -1 && (headerLower === "number" || headerLower === "mobile" || headerLower === "phone" || headerLower === "whatsapp number")) numberColIdx = h;
+        if (roleColIdx === -1 && headerLower === "role") roleColIdx = h;
+      }
+      if (nameColIdx !== -1) {
+        for (var w = 1; w < wData.length; w++) {
+          var wName = (wData[w][nameColIdx] || "").toString().trim();
+          if (!wName) continue;
+
+          if (numberColIdx !== -1) {
+            phoneByName[wName.toLowerCase()] = wData[w][numberColIdx] || "";
+          }
+
+          var wRole = roleColIdx !== -1 ? (wData[w][roleColIdx] || "").toString().trim().toLowerCase() : "";
+          var isDeleted = wName.toUpperCase().indexOf("DELETED_") === 0 || wRole === "deleted";
+          if (!isDeleted) {
+            activeNameSet[wName.toLowerCase()] = true;
+          }
+        }
+      }
+    }
+
+    // Sort doers alphabetically, keep ONLY active user IDs, and build the
+    // final report rows.
+    var doerKeys = Object.keys(doerMap)
+      .filter(function(key) { return activeNameSet[key]; })
+      .sort(function(a, b) {
+        return doerMap[a].name.localeCompare(doerMap[b].name);
+      });
+
+    var reportRows = doerKeys.map(function(key) {
+      var d = doerMap[key];
+      return [d.name, d.total, d.pending, d.today, phoneByName[key] || ""];
+    });
+
+    // Write into the "Task" sheet (create it if it doesn't exist yet).
+    var taskSheet = ss.getSheetByName("Task");
+    if (!taskSheet) {
+      taskSheet = ss.insertSheet("Task");
+    }
+    taskSheet.clear();
+
+    var headers = ["Doer's Name", "Total Task", "Total Pending", "Today Task", "Number"];
+    taskSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    taskSheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#c9daf8");
+
+    if (reportRows.length > 0) {
+      taskSheet.getRange(2, 1, reportRows.length, headers.length).setValues(reportRows);
+    }
+
+    taskSheet.autoResizeColumns(1, headers.length);
+    SpreadsheetApp.flush();
+
+    return {
+      success: true,
+      message: "Doer task report generated successfully",
+      doersCount: reportRows.length,
+      generatedAt: todayString
+    };
+  } catch (error) {
+    console.error("Error generating doer task report:", error);
+    return { success: false, error: error.toString() };
+  }
+}
+
+// Run this ONCE from the Apps Script editor to install the daily automatic
+// trigger for generateDoerTaskReport(). Re-running it safely replaces any
+// previously installed trigger for this same function.
+function setupDoerTaskReportTrigger(hour, minute) {
+  try {
+    var targetHour = (hour !== undefined && !isNaN(hour)) ? Math.max(0, Math.min(23, parseInt(hour, 10))) : 7;
+    var targetMinute = (minute !== undefined && !isNaN(minute)) ? parseInt(minute, 10) : 0;
+
+    var validNearMinutes = [0, 15, 30, 45];
+    var scriptMinute = validNearMinutes.reduce(function(prev, curr) {
+      return (Math.abs(curr - targetMinute) < Math.abs(prev - targetMinute) ? curr : prev);
+    });
+
+    var triggers = ScriptApp.getProjectTriggers();
+    for (var i = 0; i < triggers.length; i++) {
+      if (triggers[i].getHandlerFunction() === 'generateDoerTaskReport') {
+        ScriptApp.deleteTrigger(triggers[i]);
+      }
+    }
+
+    var trigger = ScriptApp.newTrigger('generateDoerTaskReport')
+      .timeBased()
+      .everyDays(1)
+      .atHour(targetHour)
+      .nearMinute(scriptMinute)
+      .create();
+
+    return {
+      success: true,
+      message: "Daily Doer Task Report trigger installed successfully.",
+      triggerId: trigger.getUniqueId(),
+      targetHour: targetHour,
+      targetMinute: targetMinute
+    };
+  } catch (error) {
+    return { success: false, error: error.toString() };
+  }
+}
+

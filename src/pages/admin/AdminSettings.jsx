@@ -79,6 +79,7 @@ export default function AdminSettings() {
   const [templates, setTemplates] = useState([]);
   const [checklistCount, setChecklistCount] = useState(0);
   const [delegationCount, setDelegationCount] = useState(0);
+  const [todayGeneratedCount, setTodayGeneratedCount] = useState(0);
   const [calendarDates, setCalendarDates] = useState([]);
   const [holidays, setHolidays] = useState([]);
   
@@ -230,10 +231,12 @@ export default function AdminSettings() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [uRes, cCountRes, dCountRes, calRes, holRes, wRes] = await Promise.all([
+      const todayDDMMYYYY = formatDateToDDMMYYYY(new Date());
+      const [uRes, cCountRes, dCountRes, todayCountRes, calRes, holRes, wRes] = await Promise.all([
         supabase.from('Unique').select('*').limit(3000),
         supabase.from('Checklist').select('*', { count: 'exact', head: true }),
         supabase.from('Delegation').select('*', { count: 'exact', head: true }),
+        supabase.from('Checklist').select('*', { count: 'exact', head: true }).eq('Task Start Date', todayDDMMYYYY),
         supabase.from('Working Day Calendar').select('*').limit(3000),
         supabase.from('Holiday List').select('*').limit(1000),
         supabase.from('Whatsapp').select('*').order('Username', { ascending: true })
@@ -242,6 +245,7 @@ export default function AdminSettings() {
       if (uRes.data) setTemplates(uRes.data);
       if (cCountRes.count !== null) setChecklistCount(cCountRes.count);
       if (dCountRes.count !== null) setDelegationCount(dCountRes.count);
+      if (todayCountRes.count !== null) setTodayGeneratedCount(todayCountRes.count);
       if (calRes.data) setCalendarDates(calRes.data);
       if (holRes.data) setHolidays(holRes.data);
       if (wRes.data) {
@@ -1665,7 +1669,7 @@ export default function AdminSettings() {
         </div>
 
         {/* Overview Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
           {/* Card 1: Users Count */}
           <div className="card-3d-wrapper card-3d-emerald">
             <div className="flex items-center justify-between">
@@ -1725,6 +1729,20 @@ export default function AdminSettings() {
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-1">Today: {todayFormatted}</p>
+            </div>
+          </div>
+
+          {/* Card 5: Today's Generated Tasks */}
+          <div className="card-3d-wrapper card-3d-amber">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Today's Generated</span>
+              <div className="crystal-orb-3d crystal-orb-amber">
+                <Zap className="h-5 w-5" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="text-2xl number-3d-text text-amber-700">{todayGeneratedCount.toLocaleString()}</div>
+              <p className="text-xs text-slate-500 mt-0.5">Tasks generated today ({todayFormatted})</p>
             </div>
           </div>
         </div>
