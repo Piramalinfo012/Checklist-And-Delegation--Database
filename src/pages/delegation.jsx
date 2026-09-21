@@ -1521,7 +1521,7 @@ function DelegationDataPage() {
               />
             </div>
 
-            <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
               <button
                 onClick={() => window.location.reload()}
                 className="flex-1 sm:flex-none sm:w-32 bg-white text-purple-700 border border-purple-200 py-2 px-4 rounded-md hover:bg-purple-50 hover:border-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition-all duration-200 text-sm font-medium flex items-center justify-center group shadow-sm"

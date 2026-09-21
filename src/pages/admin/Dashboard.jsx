@@ -1,10 +1,9 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { BarChart3, CheckCircle2, Clock, ListTodo, Users, AlertTriangle, Filter, User, Edit3, Upload, X, ChevronDown, Check, Search } from 'lucide-react'
+import { BarChart3, CheckCircle2, Clock, ListTodo, Users, AlertTriangle, Filter, ChevronDown, Check, Search } from 'lucide-react'
 import AdminLayout from "../../components/layout/AdminLayout.jsx"
 import { supabase } from "../../lib/supabaseClient"
-import { uploadImageToCloudinary } from "../../lib/cloudinary"
 import {
   BarChart,
   Bar,
@@ -16,7 +15,8 @@ import {
   ResponsiveContainer,
   PieChart,
   Pie,
-  Cell
+  Cell,
+  Label
 } from "recharts"
 
 
@@ -109,12 +109,6 @@ export default function AdminDashboard() {
   const [filterStaff, setFilterStaff] = useState("all")
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState("overview")
-  const [userProfileImage, setUserProfileImage] = useState(null)
-  const [userEmail, setUserEmail] = useState("")
-  const [showImageUploadModal, setShowImageUploadModal] = useState(false);
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [showLinkInputModal, setShowLinkInputModal] = useState(false);
 
   // State for department data
   const [departmentData, setDepartmentData] = useState({
@@ -138,6 +132,10 @@ export default function AdminDashboard() {
   // leaving the dashboard stuck at 0 until the user manually reloads the page.
   const [dataLoadError, setDataLoadError] = useState(false);
   const retryTimeoutRef = useRef(null);
+
+  // True until the first data load (fetch or cache) completes, so the stat cards can
+  // show "Loading…" instead of a misleading 0 while the dashboard is still fetching.
+  const [isLoading, setIsLoading] = useState(true);
 
   // Store the current date for overdue calculation
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -168,21 +166,6 @@ export default function AdminDashboard() {
 
   const isRegularUser = () => {
     return getUserRole() === 'user';
-  };
-
-  const fetchUserProfileFromSheets = async (username) => {
-    try {
-      const { data, error } = await supabase.from('Whatsapp').select('*');
-      if (error) throw error;
-      const userRow = (data || []).find(r => (r['User name'] || r.Username || '').toLowerCase() === (username || '').toLowerCase());
-      if (userRow) {
-        if (userRow['ID'] || userRow.Email) setUserEmail(userRow['ID'] || userRow.Email);
-        const photo = userRow.Photo || userRow.Image;
-        if (photo) setUserProfileImage(getDisplayableImageUrl(photo));
-      }
-    } catch (error) {
-      console.error("Error fetching profile from Supabase:", error);
-    }
   };
 
   const getDisplayableImageUrl = (url) => {
@@ -229,81 +212,6 @@ export default function AdminDashboard() {
     } catch (e) {
       console.error("Error processing image URL:", url, e);
       return url;
-    }
-  };
-
-  useEffect(() => {
-    const username = sessionStorage.getItem('username');
-    if (username) {
-      fetchUserProfileFromSheets(username);
-    }
-  }, []);
-
-  const handleFileSelect = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      if (!file.type.startsWith('image/')) {
-        alert('Please select an image file');
-        return;
-      }
-      if (file.size > 10 * 1024 * 1024) {
-        alert('File size must be less than 10MB');
-        return;
-      }
-      setSelectedFile(file);
-    }
-  };
-
-  const convertToBase64 = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = error => reject(error);
-    });
-  };
-
-  const uploadImageAndUpdateWhatsApp = async () => {
-    if (!selectedFile) {
-      alert('Please select an image first');
-      return;
-    }
-
-    try {
-      setUploadingImage(true);
-      const username = sessionStorage.getItem('username');
-
-      if (!username) {
-        throw new Error('Username not found in session');
-      }
-
-      // 1. Upload photo directly to Cloudinary
-      const uploadedUrl = await uploadImageToCloudinary(selectedFile);
-      if (!uploadedUrl) {
-        throw new Error('Could not get image URL from Cloudinary upload');
-      }
-
-      // 2. Update Photo in Supabase Whatsapp table
-      const { error: updateErr } = await supabase
-        .from('Whatsapp')
-        .update({ Photo: uploadedUrl })
-        .ilike('Username', username.trim());
-
-      if (updateErr) throw updateErr;
-
-      // 3. Update local state with the new image
-      setUserProfileImage(uploadedUrl);
-
-      // 4. Close modal and reset
-      setShowImageUploadModal(false);
-      setSelectedFile(null);
-
-      alert('Profile photo (DP) uploaded and updated successfully!');
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      alert('Failed to upload profile photo: ' + (error.message || error));
-    } finally {
-      setUploadingImage(false);
     }
   };
 
@@ -587,19 +495,35 @@ export default function AdminDashboard() {
           }
         }
 
-        let completedQuery = supabase.from('Checklist')
-          .select('*')
-          .not('Actual', 'is', null)
-          .order('Task ID', { ascending: false })
-          .limit(1000);
-
+        // Paginate completed tasks too (up to 7000), the same way pending tasks are
+        // fetched, so completed tasks from earlier months (Jul, Aug, ...) are included
+        // in the monthly chart instead of only the most recent 1000 (which are all
+        // from the current month and left older months showing 0).
+        const completedPromises = [];
         if (isUserScoped) {
-          completedQuery = completedQuery.ilike('Name', username.trim());
+          completedPromises.push(
+            supabase.from('Checklist')
+              .select('*')
+              .not('Actual', 'is', null)
+              .ilike('Name', username.trim())
+              .order('Task ID', { ascending: false })
+              .limit(2000)
+          );
+        } else {
+          for (let i = 0; i < 7; i++) {
+            completedPromises.push(
+              supabase.from('Checklist')
+                .select('*')
+                .not('Actual', 'is', null)
+                .order('Task ID', { ascending: false })
+                .range(i * batchSize, (i + 1) * batchSize - 1)
+            );
+          }
         }
 
-        const [pendingResults, completedResult] = await Promise.all([
+        const [pendingResults, completedResults] = await Promise.all([
           Promise.all(pendingPromises),
-          completedQuery
+          Promise.all(completedPromises)
         ]);
 
         let allPendingRows = [];
@@ -609,7 +533,12 @@ export default function AdminDashboard() {
           }
         });
 
-        const allCompletedRows = (completedResult && completedResult.data) || [];
+        let allCompletedRows = [];
+        completedResults.forEach(res => {
+          if (res && res.data) {
+            allCompletedRows.push(...res.data);
+          }
+        });
         const combinedChecklistData = [...allPendingRows, ...allCompletedRows];
 
         supabaseRows = combinedChecklistData.map(r => ({
@@ -909,12 +838,15 @@ export default function AdminDashboard() {
               pendingTasks++;
               statusData.Pending++;
 
-              // Update monthly data for pending tasks
-              const monthName = (
-                dashboardType === "delegation" ? new Date() : today
-              ).toLocaleString("default", { month: "short" });
-              if (monthlyData[monthName]) {
-                monthlyData[monthName].pending++;
+              // Update monthly data for pending tasks — bucket by the task's
+              // start-date month so pending tasks spread across their real months
+              // instead of all piling into the current month.
+              const pendingMonthDate = parseDateFromDDMMYYYY(taskStartDate);
+              if (pendingMonthDate) {
+                const monthName = pendingMonthDate.toLocaleString("default", { month: "short" });
+                if (monthlyData[monthName]) {
+                  monthlyData[monthName].pending++;
+                }
               }
             }
           } else {
@@ -953,12 +885,17 @@ export default function AdminDashboard() {
                 pendingTasks++;
                 statusData.Pending++;
 
-                // Update monthly data for pending tasks
-                const monthName = today.toLocaleString("default", {
-                  month: "short",
-                });
-                if (monthlyData[monthName]) {
-                  monthlyData[monthName].pending++;
+                // Update monthly data for pending tasks — bucket by the task's
+                // start-date month so pending tasks spread across their real months
+                // instead of all piling into the current month.
+                const pendingMonthDate = parseDateFromDDMMYYYY(taskStartDate);
+                if (pendingMonthDate) {
+                  const monthName = pendingMonthDate.toLocaleString("default", {
+                    month: "short",
+                  });
+                  if (monthlyData[monthName]) {
+                    monthlyData[monthName].pending++;
+                  }
                 }
               }
             }
@@ -1088,6 +1025,7 @@ export default function AdminDashboard() {
 
       // Success — clear any error indicator and cancel a pending retry, if one was scheduled.
       setDataLoadError(false);
+      setIsLoading(false);
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
         retryTimeoutRef.current = null;
@@ -1115,6 +1053,8 @@ export default function AdminDashboard() {
         const parsedCache = JSON.parse(cached);
         if (parsedCache && Array.isArray(parsedCache.allTasks)) {
           setDepartmentData(parsedCache);
+          // Cached data is available, so no "Loading…" flash is needed.
+          setIsLoading(false);
         }
       }
     } catch (e) { /* ignore corrupt cache */ }
@@ -1254,25 +1194,40 @@ export default function AdminDashboard() {
   const TasksOverviewChart = () => {
     return (
       <ResponsiveContainer width="100%" height={350}>
-        <BarChart data={departmentData.barChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" vertical={false} />
-          <XAxis dataKey="name" fontSize={12} stroke="#94a3b8" tickLine={false} axisLine={false} dy={10} />
-          <YAxis fontSize={12} stroke="#94a3b8" tickLine={false} axisLine={false} dx={-10} tickFormatter={(value) => `${value}`} />
-          <Tooltip 
-            cursor={{fill: 'rgba(0,0,0,0.02)'}}
-            contentStyle={{ 
-              borderRadius: '16px', 
-              border: '1px solid rgba(255,255,255,0.6)', 
+        <BarChart
+          data={departmentData.barChartData}
+          margin={{ top: 20, right: 20, left: 10, bottom: 5 }}
+          barGap={5}
+          barCategoryGap="22%"
+        >
+          <defs>
+            <linearGradient id="barCompletedGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#34d399" />
+              <stop offset="100%" stopColor="#059669" />
+            </linearGradient>
+            <linearGradient id="barPendingGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#fbbf24" />
+              <stop offset="100%" stopColor="#f59e0b" />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="4 4" stroke="rgba(0,0,0,0.05)" vertical={false} />
+          <XAxis dataKey="name" fontSize={12} stroke="#94a3b8" tickLine={false} axisLine={false} dy={10} interval={0} />
+          <YAxis fontSize={12} stroke="#94a3b8" tickLine={false} axisLine={false} dx={-10} width={44} tickFormatter={(value) => (value >= 1000 ? `${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k` : `${value}`)} />
+          <Tooltip
+            cursor={{ fill: 'rgba(139,92,246,0.06)', radius: 8 }}
+            contentStyle={{
+              borderRadius: '16px',
+              border: '1px solid rgba(255,255,255,0.6)',
               boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
               background: 'rgba(255,255,255,0.85)',
               backdropFilter: 'blur(12px)',
               padding: '12px'
-            }} 
+            }}
             itemStyle={{ fontWeight: 500 }}
           />
           <Legend wrapperStyle={{ paddingTop: '20px' }} iconType="circle" />
-          <Bar dataKey="completed" stackId="a" fill="#10b981" barSize={16} radius={[0, 0, 4, 4]} />
-          <Bar dataKey="pending" stackId="a" fill="#f59e0b" barSize={16} radius={[4, 4, 0, 0]} />
+          <Bar dataKey="completed" name="Completed" fill="url(#barCompletedGrad)" maxBarSize={24} radius={[6, 6, 0, 0]} minPointSize={3} />
+          <Bar dataKey="pending" name="Pending" fill="url(#barPendingGrad)" maxBarSize={24} radius={[6, 6, 0, 0]} minPointSize={3} />
         </BarChart>
       </ResponsiveContainer>
     )
@@ -1281,33 +1236,57 @@ export default function AdminDashboard() {
   // Tasks Completion Chart Component
   const TasksCompletionChart = () => {
     const COLORS = ['#10b981', '#f59e0b', '#f43f5e', '#6366f1'];
+    const pieTotal = departmentData.pieChartData.reduce((sum, e) => sum + (Number(e.value) || 0), 0);
     return (
       <ResponsiveContainer width="100%" height={300}>
         <PieChart>
-          <Pie 
-            data={departmentData.pieChartData} 
-            cx="50%" 
-            cy="50%" 
-            innerRadius={80} 
-            outerRadius={105} 
-            paddingAngle={6} 
+          <defs>
+            {COLORS.map((c, i) => (
+              <linearGradient key={i} id={`pieGrad${i}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={c} stopOpacity={1} />
+                <stop offset="100%" stopColor={c} stopOpacity={0.72} />
+              </linearGradient>
+            ))}
+          </defs>
+          <Pie
+            data={departmentData.pieChartData}
+            cx="50%"
+            cy="50%"
+            innerRadius={78}
+            outerRadius={108}
+            paddingAngle={5}
             dataKey="value"
             stroke="none"
-            cornerRadius={8}
+            cornerRadius={10}
           >
             {departmentData.pieChartData.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              <Cell key={`cell-${index}`} fill={`url(#pieGrad${index % COLORS.length})`} />
             ))}
+            <Label
+              content={({ viewBox }) => {
+                const { cx, cy } = viewBox;
+                return (
+                  <g>
+                    <text x={cx} y={cy - 6} textAnchor="middle" dominantBaseline="middle" style={{ fontSize: '30px', fontWeight: 800, letterSpacing: '-0.02em', fill: '#1e293b' }}>
+                      {pieTotal}
+                    </text>
+                    <text x={cx} y={cy + 18} textAnchor="middle" dominantBaseline="middle" style={{ fontSize: '12px', fontWeight: 500, fill: '#94a3b8' }}>
+                      Total Tasks
+                    </text>
+                  </g>
+                );
+              }}
+            />
           </Pie>
-          <Tooltip 
-            contentStyle={{ 
-              borderRadius: '16px', 
-              border: '1px solid rgba(255,255,255,0.6)', 
+          <Tooltip
+            contentStyle={{
+              borderRadius: '16px',
+              border: '1px solid rgba(255,255,255,0.6)',
               boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
               background: 'rgba(255,255,255,0.85)',
               backdropFilter: 'blur(12px)',
               padding: '12px'
-            }} 
+            }}
             itemStyle={{ fontWeight: 500, color: '#334155' }}
           />
           <Legend wrapperStyle={{ paddingTop: '20px' }} iconType="circle" />
@@ -1420,53 +1399,6 @@ export default function AdminDashboard() {
             )}
           </div>
           <div className="flex items-center gap-4">
-            <div className="relative group">
-              {userProfileImage ? (
-                <div className="relative">
-                  <img
-                    src={userProfileImage}
-                    alt="Profile"
-                    className="w-15 h-15 rounded-full object-cover border-2 border-gray-50 cursor-pointer transition-all duration-200 group-hover:brightness-75 shadow-md"
-                    style={{
-                      width: "60px",
-                      height: "60px",
-                      backgroundColor: "#f3f4f6",
-                      objectPosition: "center",
-                    }}
-                    onClick={() => setShowImageUploadModal(true)}
-                    onError={(e) => {
-                      const originalUrl = userProfileImage
-                        .replace("thumbnail?", "uc?export=view&")
-                        .replace("&sz=w150", "");
-                      e.target.src = originalUrl;
-                    }}
-                  />
-                  <div
-                    className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black bg-opacity-30 rounded-full cursor-pointer"
-                    onClick={() => setShowImageUploadModal(true)}
-                  >
-                    <Edit3 className="h-5 w-5 text-white" />
-                  </div>
-                </div>
-              ) : (
-                <div className="relative group">
-                  <div
-                    className="w-15 h-15 rounded-full bg-purple-500 flex items-center justify-center border-2 border-purple-600 cursor-pointer transition-all duration-200 group-hover:brightness-75"
-                    style={{ width: "60px", height: "60px" }}
-                    onClick={() => setShowLinkInputModal(true)}
-                  >
-                    <User className="h-6 w-6 text-white" />
-                  </div>
-                  <div
-                    className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black bg-opacity-30 rounded-full cursor-pointer"
-                    onClick={() => setShowLinkInputModal(true)}
-                  >
-                    <Edit3 className="h-5 w-5 text-white" />
-                  </div>
-                </div>
-              )}
-            </div>
-
             <div className="w-[180px]">
               <CustomDropdown
                 value={dashboardType}
@@ -1494,7 +1426,11 @@ export default function AdminDashboard() {
             </div>
             <div className="pt-1">
               <div className="text-3xl font-extrabold text-slate-800 number-3d-text">
-                {departmentData.totalTasks}
+                {isLoading ? (
+                  <span className="text-base font-semibold text-slate-400 animate-pulse">Loading…</span>
+                ) : (
+                  departmentData.totalTasks
+                )}
               </div>
               <p className="text-slate-400 text-xs mt-1.5 font-medium">
                 {dashboardType === "delegation"
@@ -1523,9 +1459,13 @@ export default function AdminDashboard() {
             </div>
             <div className="pt-1">
               <div className="text-3xl font-extrabold text-slate-800 number-3d-text">
-                {dashboardType === "delegation"
-                  ? departmentData.completedRatingOne
-                  : departmentData.completedTasks}
+                {isLoading ? (
+                  <span className="text-base font-semibold text-slate-400 animate-pulse">Loading…</span>
+                ) : dashboardType === "delegation" ? (
+                  departmentData.completedRatingOne
+                ) : (
+                  departmentData.completedTasks
+                )}
               </div>
               <p className="text-xs text-slate-400 mt-1.5 font-medium">
                 {dashboardType === "delegation"
@@ -1552,9 +1492,13 @@ export default function AdminDashboard() {
             </div>
             <div className="pt-1">
               <div className="text-3xl font-extrabold text-slate-800 number-3d-text">
-                {dashboardType === "delegation"
-                  ? departmentData.completedRatingTwo
-                  : departmentData.pendingTasks}
+                {isLoading ? (
+                  <span className="text-base font-semibold text-slate-400 animate-pulse">Loading…</span>
+                ) : dashboardType === "delegation" ? (
+                  departmentData.completedRatingTwo
+                ) : (
+                  departmentData.pendingTasks
+                )}
               </div>
               <p className="text-xs text-slate-400 mt-1.5 font-medium">
                 {dashboardType === "delegation"
@@ -1581,9 +1525,13 @@ export default function AdminDashboard() {
             </div>
             <div className="pt-1">
               <div className="text-3xl font-extrabold text-slate-800 number-3d-text">
-                {dashboardType === "delegation"
-                  ? departmentData.completedRatingThreePlus
-                  : departmentData.overdueTasks}
+                {isLoading ? (
+                  <span className="text-base font-semibold text-slate-400 animate-pulse">Loading…</span>
+                ) : dashboardType === "delegation" ? (
+                  departmentData.completedRatingThreePlus
+                ) : (
+                  departmentData.overdueTasks
+                )}
               </div>
               <p className="text-xs text-slate-400 mt-1.5 font-medium">
                 {dashboardType === "delegation"
@@ -2141,9 +2089,10 @@ export default function AdminDashboard() {
           )}
 
           {activeTab === "staff" && (
-            <div className="rounded-lg border border-purple-200 shadow-md bg-white">
+            <div className="rounded-2xl border border-purple-200 shadow-sm bg-white overflow-hidden">
               <div className="bg-gradient-to-r from-purple-50 to-pink-50 border-b border-purple-100 p-4">
-                <h3 className="text-purple-700 font-medium">
+                <h3 className="text-purple-700 font-semibold flex items-center gap-2">
+                  <Users className="h-4 w-4 text-purple-600" />
                   Staff Performance
                 </h3>
                 <p className="text-purple-600 text-sm">
@@ -2158,7 +2107,7 @@ export default function AdminDashboard() {
                 </p>
               </div>
               <div className="p-4">
-                <div className="space-y-8">
+                <div className="space-y-6">
                   {departmentData.staffMembers.length > 0 ? (
                     <>
                       {(() => {
@@ -2169,237 +2118,137 @@ export default function AdminDashboard() {
                           .filter((staff) => staff.totalTasks > 0)
                           .sort((a, b) => b.progress - a.progress);
 
+                        const tierStyle = {
+                          green: { headBg: "from-emerald-50 to-green-100", headBorder: "border-emerald-200", title: "text-emerald-700", sub: "text-emerald-600", rowBorder: "border-emerald-100", rowBg: "bg-emerald-50/60", name: "text-emerald-800", meta: "text-emerald-600", pct: "text-emerald-600", track: "bg-emerald-100", bar: "from-emerald-500 to-teal-500", ring: "ring-emerald-300", pill: "bg-emerald-100 text-emerald-700" },
+                          yellow: { headBg: "from-amber-50 to-yellow-100", headBorder: "border-amber-200", title: "text-amber-700", sub: "text-amber-600", rowBorder: "border-amber-100", rowBg: "bg-amber-50/60", name: "text-amber-800", meta: "text-amber-600", pct: "text-amber-600", track: "bg-amber-100", bar: "from-amber-500 to-yellow-500", ring: "ring-amber-300", pill: "bg-amber-100 text-amber-700" },
+                          red: { headBg: "from-rose-50 to-red-100", headBorder: "border-rose-200", title: "text-rose-700", sub: "text-rose-600", rowBorder: "border-rose-100", rowBg: "bg-rose-50/60", name: "text-rose-800", meta: "text-rose-600", pct: "text-rose-600", track: "bg-rose-100", bar: "from-rose-500 to-pink-500", ring: "ring-rose-300", pill: "bg-rose-100 text-rose-700" },
+                          gray: { headBg: "from-gray-50 to-gray-100", headBorder: "border-gray-200", title: "text-gray-700", sub: "text-gray-600", rowBorder: "border-gray-100", rowBg: "bg-gray-50", name: "text-gray-700", meta: "text-gray-500", pct: "text-gray-500", track: "bg-gray-100", bar: "from-gray-400 to-gray-500", ring: "ring-gray-200", pill: "bg-gray-200 text-gray-600" },
+                        };
+
+                        const renderStaffRow = (staff, tier, rank) => {
+                          const s = tierStyle[tier];
+                          const avatarSrc = staff.photo
+                            ? getDisplayableImageUrl(staff.photo)
+                            : `https://ui-avatars.com/api/?name=${encodeURIComponent(staff.name || "U")}&background=6366f1&color=fff&bold=true`;
+                          return (
+                            <div
+                              key={staff.id}
+                              className={`group flex items-center gap-3.5 p-3.5 rounded-xl border ${s.rowBorder} ${s.rowBg} transition-all duration-200 hover:shadow-md hover:-translate-y-0.5`}
+                            >
+                              {rank ? (
+                                <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${s.pill}`}>
+                                  {rank}
+                                </div>
+                              ) : null}
+                              <img
+                                src={avatarSrc}
+                                alt={staff.name}
+                                className={`h-11 w-11 shrink-0 rounded-full object-cover ring-2 ${s.ring} shadow-sm`}
+                                onError={(e) => {
+                                  e.target.onerror = null;
+                                  e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(staff.name || "U")}&background=6366f1&color=fff&bold=true`;
+                                }}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className={`truncate font-semibold ${s.name}`}>{staff.name}</p>
+                                  <span className={`shrink-0 text-lg font-bold ${s.pct}`}>
+                                    {tier === "gray" ? "N/A" : `${staff.progress}%`}
+                                  </span>
+                                </div>
+                                <p className={`text-xs ${s.meta}`}>
+                                  {tier === "gray"
+                                    ? (dashboardType === "delegation" ? "No tasks in delegation sheet" : "No tasks assigned up to today")
+                                    : `${staff.completedTasks} of ${staff.totalTasks} tasks completed`}
+                                </p>
+                                {tier !== "gray" && (
+                                  <div className={`mt-2 h-1.5 w-full overflow-hidden rounded-full ${s.track}`}>
+                                    <div
+                                      className={`h-full rounded-full bg-gradient-to-r ${s.bar} transition-all duration-500`}
+                                      style={{ width: `${staff.progress}%` }}
+                                    ></div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        };
+
+                        const renderTierSection = (tier, title, subtitle, members, emptyMsg, useRank) => {
+                          const s = tierStyle[tier];
+                          return (
+                            <div className={`overflow-hidden rounded-2xl border ${s.headBorder} shadow-sm`}>
+                              <div className={`flex items-center justify-between gap-3 border-b ${s.headBorder} bg-gradient-to-r ${s.headBg} p-4`}>
+                                <div>
+                                  <h3 className={`text-base font-semibold ${s.title}`}>{title}</h3>
+                                  <p className={`text-sm ${s.sub}`}>{subtitle}</p>
+                                </div>
+                                <span className={`shrink-0 rounded-full px-3 py-1 text-sm font-bold ${s.pill}`}>{members.length}</span>
+                              </div>
+                              <div className="space-y-3 p-4">
+                                {members.length > 0 ? (
+                                  members.map((staff, i) => renderStaffRow(staff, tier, useRank ? i + 1 : null))
+                                ) : (
+                                  <div className="rounded-xl border border-dashed border-gray-200 py-6 text-center text-sm text-gray-400">
+                                    {emptyMsg}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        };
+
+                        const noTaskStaff = departmentData.staffMembers.filter((staff) => staff.totalTasks === 0);
+
                         return (
                           <>
                             {/* High performers section (70% or above) */}
-                            <div className="rounded-md border border-green-200">
-                              <div className="p-4 bg-gradient-to-r from-green-50 to-green-100 border-b border-green-200">
-                                <h3 className="text-lg font-medium text-green-700">
-                                  Top Performers
-                                </h3>
-                                <p className="text-sm text-green-600">
-                                  {dashboardType === "delegation"
-                                    ? "Staff with high task completion rates (all delegation data)"
-                                    : "Staff with high task completion rates (tasks up to today only)"}
-                                </p>
-                              </div>
-                              <div className="p-4">
-                                <div className="space-y-4">
-                                  {sortedStaffMembers
-                                    .filter((staff) => staff.progress >= 70)
-                                    .map((staff) => (
-                                      <div
-                                        key={staff.id}
-                                        className="flex items-center justify-between p-3 border border-green-100 rounded-md bg-green-50"
-                                      >
-                                        <div className="flex items-center gap-2">
-                                          <div className="h-10 w-10 rounded-full bg-gradient-to-r from-green-500 to-teal-500 flex items-center justify-center">
-                                            <span className="text-sm font-medium text-white">
-                                              {staff.name.charAt(0)}
-                                            </span>
-                                          </div>
-                                          <div>
-                                            <p className="font-medium text-green-700">
-                                              {staff.name}
-                                            </p>
-                                            <p className="text-xs text-green-600">
-                                              {staff.completedTasks} of{" "}
-                                              {staff.totalTasks} tasks
-                                              completed
-                                            </p>
-                                          </div>
-                                        </div>
-                                        <div className="text-lg font-bold text-green-600">
-                                          {staff.progress}%
-                                        </div>
-                                      </div>
-                                    ))}
-                                  {sortedStaffMembers.filter(
-                                    (staff) => staff.progress >= 70
-                                  ).length === 0 && (
-                                      <div className="text-center p-4 text-gray-500">
-                                        <p>
-                                          No staff members with high completion
-                                          rates found.
-                                        </p>
-                                      </div>
-                                    )}
-                                </div>
-                              </div>
-                            </div>
+                            {renderTierSection(
+                              "green",
+                              "Top Performers",
+                              dashboardType === "delegation"
+                                ? "Staff with high task completion rates (all delegation data)"
+                                : "Staff with high task completion rates (tasks up to today only)",
+                              sortedStaffMembers.filter((staff) => staff.progress >= 70),
+                              "No staff members with high completion rates found.",
+                              true
+                            )}
 
                             {/* Mid performers section (40-69%) */}
-                            <div className="rounded-md border border-yellow-200">
-                              <div className="p-4 bg-gradient-to-r from-yellow-50 to-yellow-100 border-b border-yellow-200">
-                                <h3 className="text-lg font-medium text-yellow-700">
-                                  Average Performers
-                                </h3>
-                                <p className="text-sm text-yellow-600">
-                                  {dashboardType === "delegation"
-                                    ? "Staff with moderate task completion rates (all delegation data)"
-                                    : "Staff with moderate task completion rates (tasks up to today only)"}
-                                </p>
-                              </div>
-                              <div className="p-4">
-                                <div className="space-y-4">
-                                  {sortedStaffMembers
-                                    .filter(
-                                      (staff) =>
-                                        staff.progress >= 40 &&
-                                        staff.progress < 70
-                                    )
-                                    .map((staff) => (
-                                      <div
-                                        key={staff.id}
-                                        className="flex items-center justify-between p-3 border border-yellow-100 rounded-md bg-yellow-50"
-                                      >
-                                        <div className="flex items-center gap-2">
-                                          <div className="h-10 w-10 rounded-full bg-gradient-to-r from-yellow-500 to-amber-500 flex items-center justify-center">
-                                            <span className="text-sm font-medium text-white">
-                                              {staff.name.charAt(0)}
-                                            </span>
-                                          </div>
-                                          <div>
-                                            <p className="font-medium text-yellow-700">
-                                              {staff.name}
-                                            </p>
-                                            <p className="text-xs text-yellow-600">
-                                              {staff.completedTasks} of{" "}
-                                              {staff.totalTasks} tasks
-                                              completed
-                                            </p>
-                                          </div>
-                                        </div>
-                                        <div className="text-lg font-bold text-yellow-600">
-                                          {staff.progress}%
-                                        </div>
-                                      </div>
-                                    ))}
-                                  {sortedStaffMembers.filter(
-                                    (staff) =>
-                                      staff.progress >= 40 &&
-                                      staff.progress < 70
-                                  ).length === 0 && (
-                                      <div className="text-center p-4 text-gray-500">
-                                        <p>
-                                          No staff members with moderate
-                                          completion rates found.
-                                        </p>
-                                      </div>
-                                    )}
-                                </div>
-                              </div>
-                            </div>
+                            {renderTierSection(
+                              "yellow",
+                              "Average Performers",
+                              dashboardType === "delegation"
+                                ? "Staff with moderate task completion rates (all delegation data)"
+                                : "Staff with moderate task completion rates (tasks up to today only)",
+                              sortedStaffMembers.filter((staff) => staff.progress >= 40 && staff.progress < 70),
+                              "No staff members with moderate completion rates found.",
+                              false
+                            )}
 
                             {/* Low performers section (below 40%) */}
-                            <div className="rounded-md border border-red-200">
-                              <div className="p-4 bg-gradient-to-r from-red-50 to-red-100 border-b border-red-200">
-                                <h3 className="text-lg font-medium text-red-700">
-                                  Needs Improvement
-                                </h3>
-                                <p className="text-sm text-red-600">
-                                  {dashboardType === "delegation"
-                                    ? "Staff with lower task completion rates (all delegation data)"
-                                    : "Staff with lower task completion rates (tasks up to today only)"}
-                                </p>
-                              </div>
-                              <div className="p-4">
-                                <div className="space-y-4">
-                                  {sortedStaffMembers
-                                    .filter((staff) => staff.progress < 40)
-                                    .map((staff) => (
-                                      <div
-                                        key={staff.id}
-                                        className="flex items-center justify-between p-3 border border-red-100 rounded-md bg-red-50"
-                                      >
-                                        <div className="flex items-center gap-2">
-                                          <div className="h-10 w-10 rounded-full bg-gradient-to-r from-red-500 to-pink-500 flex items-center justify-center">
-                                            <span className="text-sm font-medium text-white">
-                                              {staff.name.charAt(0)}
-                                            </span>
-                                          </div>
-                                          <div>
-                                            <p className="font-medium text-red-700">
-                                              {staff.name}
-                                            </p>
-                                            <p className="text-xs text-red-600">
-                                              {staff.completedTasks} of{" "}
-                                              {staff.totalTasks} tasks
-                                              completed
-                                            </p>
-                                          </div>
-                                        </div>
-                                        <div className="text-lg font-bold text-red-600">
-                                          {staff.progress}%
-                                        </div>
-                                      </div>
-                                    ))}
-                                  {sortedStaffMembers.filter(
-                                    (staff) => staff.progress < 40
-                                  ).length === 0 && (
-                                      <div className="text-center p-4 text-gray-500">
-                                        <p>
-                                          No staff members with low completion
-                                          rates found.
-                                        </p>
-                                      </div>
-                                    )}
-                                </div>
-                              </div>
-                            </div>
+                            {renderTierSection(
+                              "red",
+                              "Needs Improvement",
+                              dashboardType === "delegation"
+                                ? "Staff with lower task completion rates (all delegation data)"
+                                : "Staff with lower task completion rates (tasks up to today only)",
+                              sortedStaffMembers.filter((staff) => staff.progress < 40),
+                              "No staff members with low completion rates found.",
+                              false
+                            )}
 
                             {/* No assigned tasks section */}
-                            {departmentData.staffMembers.filter(
-                              (staff) => staff.totalTasks === 0
-                            ).length > 0 && (
-                                <div className="rounded-md border border-gray-200">
-                                  <div className="p-4 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-                                    <h3 className="text-lg font-medium text-gray-700">
-                                      No Tasks Assigned
-                                    </h3>
-                                    <p className="text-sm text-gray-600">
-                                      {dashboardType === "delegation"
-                                        ? "Staff with no tasks in delegation sheet"
-                                        : "Staff with no tasks assigned for current period"}
-                                    </p>
-                                  </div>
-                                  <div className="p-4">
-                                    <div className="space-y-4">
-                                      {departmentData.staffMembers
-                                        .filter(
-                                          (staff) => staff.totalTasks === 0
-                                        )
-                                        .map((staff) => (
-                                          <div
-                                            key={staff.id}
-                                            className="flex items-center justify-between p-3 border border-gray-100 rounded-md bg-gray-50"
-                                          >
-                                            <div className="flex items-center gap-2">
-                                              <div className="h-10 w-10 rounded-full bg-gradient-to-r from-gray-500 to-gray-600 flex items-center justify-center">
-                                                <span className="text-sm font-medium text-white">
-                                                  {staff.name.charAt(0)}
-                                                </span>
-                                              </div>
-                                              <div>
-                                                <p className="font-medium text-gray-700">
-                                                  {staff.name}
-                                                </p>
-                                                <p className="text-xs text-gray-600">
-                                                  {dashboardType === "delegation"
-                                                    ? "No tasks in delegation sheet"
-                                                    : "No tasks assigned up to today"}
-                                                </p>
-                                              </div>
-                                            </div>
-                                            <div className="text-lg font-bold text-gray-600">
-                                              N/A
-                                            </div>
-                                          </div>
-                                        ))}
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
+                            {noTaskStaff.length > 0 && renderTierSection(
+                              "gray",
+                              "No Tasks Assigned",
+                              dashboardType === "delegation"
+                                ? "Staff with no tasks in delegation sheet"
+                                : "Staff with no tasks assigned for current period",
+                              noTaskStaff,
+                              "",
+                              false
+                            )}
                           </>
                         );
                       })()}
@@ -2419,83 +2268,6 @@ export default function AdminDashboard() {
           )}
         </div>
       </div>
-      {showImageUploadModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Upload Profile Image
-              </h3>
-              <button
-                onClick={() => {
-                  setShowImageUploadModal(false);
-                  setSelectedFile(null);
-                }}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-6 w-6" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Image File
-                </label>
-                <input
-                  type="file"
-                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"
-                  onChange={handleFileSelect}
-                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Supported formats: JPG, PNG, GIF (Max 10MB)
-                </p>
-              </div>
-
-              {selectedFile && (
-                <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                  <Upload className="h-5 w-5 text-purple-600" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">
-                      {selectedFile.name}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex space-x-3 pt-4">
-                <button
-                  onClick={() => {
-                    setShowImageUploadModal(false);
-                    setSelectedFile(null);
-                  }}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={uploadImageAndUpdateWhatsApp}
-                  disabled={!selectedFile || uploadingImage}
-                  className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-md text-sm font-medium hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                >
-                  {uploadingImage ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Uploading...
-                    </>
-                  ) : (
-                    "Upload Image"
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </AdminLayout>
   );
 }

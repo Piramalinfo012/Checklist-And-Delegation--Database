@@ -311,14 +311,19 @@ const LoginPage = () => {
 
 
           {/* Center Content: Exact Headline Typography */}
-          <div className="relative z-10 my-auto py-6 text-center max-w-sm mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, ease: "easeOut", delay: 0.25 }}
+            className="relative z-10 mt-24 sm:mt-28 lg:mt-32 mb-auto py-4 text-center max-w-sm mx-auto"
+          >
             <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight leading-tight">
               Welcome to TaskMaster!
             </h2>
-            <p className="text-xs sm:text-sm text-slate-600 font-medium mt-3 leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-600 font-medium mt-4 leading-relaxed">
               We are a team, together managing thousands of checklist tasks &amp; automated delegations every single day.
             </p>
-          </div>
+          </motion.div>
 
           {/* Floating Circle Visual Badges with Pure White Ring Borders (Premium Glossy & Vibrant) */}
           <div className="relative z-10 space-y-4">

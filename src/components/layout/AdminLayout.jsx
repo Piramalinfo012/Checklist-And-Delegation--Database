@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
-import { CheckSquare, ClipboardList, Home, LogOut, Menu, Database, ChevronDown, ChevronRight, Zap, FileText, X, Play, Pause, KeyRound, Video, Settings } from 'lucide-react'
+import { CheckSquare, ClipboardList, Home, LogOut, Menu, Database, ChevronDown, ChevronRight, Zap, FileText, X, Play, Pause, KeyRound, Video, Settings, User, Edit3, Upload } from 'lucide-react'
 import sbhLogo from '../../assets/logo.png'
 import { motion, AnimatePresence } from "framer-motion"
+import { supabase } from "../../lib/supabaseClient"
+import { uploadImageToCloudinary } from "../../lib/cloudinary"
 
 const TypingText = ({ text }) => {
   const [displayed, setDisplayed] = useState("");
@@ -44,6 +46,16 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
   const [userRole, setUserRole] = useState("")
   const [userEmail, setUserEmail] = useState("")
 
+  // Profile photo (DP) shown in the top header bar, moved here from the Dashboard
+  // page so it appears consistently across all admin pages. Initialized from a
+  // sessionStorage cache so it renders instantly on every page switch instead of
+  // flashing blank/placeholder while the Supabase fetch completes again.
+  const [userProfileImage, setUserProfileImage] = useState(() => sessionStorage.getItem('profile_photo_url') || null)
+  const [showImageUploadModal, setShowImageUploadModal] = useState(false)
+  const [showImageViewModal, setShowImageViewModal] = useState(false)
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
+
 
   // Check authentication on component mount
   useEffect(() => {
@@ -61,6 +73,136 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
     setUserRole(storedRole || "user")
     setUserEmail(storedEmail || "")
   }, [navigate])
+
+  // Converts a raw Photo URL (Google Drive share link, Cloudinary URL, etc.) stored
+  // in the Whatsapp table into a directly displayable image URL.
+  const getDisplayableImageUrl = (url) => {
+    if (!url) return null;
+
+    if (
+      url.includes("cloudinary.com") ||
+      url.includes("ui-avatars.com") ||
+      url.startsWith("blob:") ||
+      url.startsWith("data:") ||
+      (!url.includes("drive.google.com") && (url.startsWith("http://") || url.startsWith("https://")))
+    ) {
+      return url;
+    }
+
+    try {
+      const ucExportMatch = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      if (ucExportMatch && ucExportMatch[1]) {
+        return `https://drive.google.com/thumbnail?id=${ucExportMatch[1]}&sz=w150`;
+      }
+
+      const directMatch = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+      if (directMatch && directMatch[1]) {
+        return `https://drive.google.com/thumbnail?id=${directMatch[1]}&sz=w150`;
+      }
+
+      const openMatch = url.match(/open\?id=([a-zA-Z0-9_-]+)/);
+      if (openMatch && openMatch[1]) {
+        return `https://drive.google.com/thumbnail?id=${openMatch[1]}&sz=w150`;
+      }
+
+      if (url.includes("thumbnail?id=")) {
+        return url;
+      }
+
+      const anyIdMatch = url.match(/([a-zA-Z0-9_-]{25,})/);
+      if (anyIdMatch && anyIdMatch[1]) {
+        return `https://drive.google.com/thumbnail?id=${anyIdMatch[1]}&sz=w150`;
+      }
+
+      const cacheBuster = Date.now();
+      return url.includes("?") ? `${url}&cb=${cacheBuster}` : `${url}?cb=${cacheBuster}`;
+    } catch (e) {
+      console.error("Error processing image URL:", url, e);
+      return url;
+    }
+  };
+
+  // Fetch the user's profile photo from the Whatsapp table.
+  useEffect(() => {
+    const fetchProfilePhoto = async () => {
+      const storedUsername = sessionStorage.getItem('username');
+      if (!storedUsername) return;
+      try {
+        const { data, error } = await supabase.from('Whatsapp').select('*');
+        if (error) throw error;
+        const userRow = (data || []).find(r => (r['User name'] || r.Username || '').toLowerCase() === storedUsername.toLowerCase());
+        const photo = userRow && (userRow.Photo || userRow.Image);
+        if (photo) {
+          const displayUrl = getDisplayableImageUrl(photo);
+          setUserProfileImage(displayUrl);
+          sessionStorage.setItem('profile_photo_url', displayUrl);
+        }
+      } catch (error) {
+        console.error("Error fetching profile photo from Supabase:", error);
+      }
+    };
+    fetchProfilePhoto();
+  }, [])
+
+  const handleFileSelect = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        alert('File size must be less than 10MB');
+        return;
+      }
+      setSelectedFile(file);
+    }
+  };
+
+  const uploadImageAndUpdateWhatsApp = async () => {
+    if (!selectedFile) {
+      alert('Please select an image first');
+      return;
+    }
+
+    try {
+      setUploadingImage(true);
+      const storedUsername = sessionStorage.getItem('username');
+
+      if (!storedUsername) {
+        throw new Error('Username not found in session');
+      }
+
+      // 1. Upload photo directly to Cloudinary
+      const uploadedUrl = await uploadImageToCloudinary(selectedFile);
+      if (!uploadedUrl) {
+        throw new Error('Could not get image URL from Cloudinary upload');
+      }
+
+      // 2. Update Photo in Supabase Whatsapp table
+      const { error: updateErr } = await supabase
+        .from('Whatsapp')
+        .update({ Photo: uploadedUrl })
+        .ilike('Username', storedUsername.trim());
+
+      if (updateErr) throw updateErr;
+
+      // 3. Update local state with the new image
+      setUserProfileImage(uploadedUrl);
+      sessionStorage.setItem('profile_photo_url', uploadedUrl);
+
+      // 4. Close modal and reset
+      setShowImageUploadModal(false);
+      setSelectedFile(null);
+
+      alert('Profile photo (DP) uploaded and updated successfully!');
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      alert('Failed to upload profile photo: ' + (error.message || error));
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
 
 
@@ -367,7 +509,7 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
       {/* Mobile menu button */}
       <button
         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-        className="md:hidden absolute left-4 top-3 z-50 text-slate-600 p-2 rounded-xl hover:bg-white/60 transition-all duration-200"
+        className="md:hidden absolute left-4 top-[22px] z-50 text-slate-600 p-2 rounded-xl hover:bg-white/60 transition-all duration-200"
         style={{ backdropFilter: 'blur(10px)' }}
       >
         <Menu className="h-5 w-5" />
@@ -565,23 +707,204 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
       {/* License Modal */}
       {isLicenseModalOpen && <LicenseModal />}
 
+      {/* Profile Photo View Modal (lightbox) */}
+      {showImageViewModal && userProfileImage && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowImageViewModal(false)}
+        >
+          <div className="relative max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setShowImageViewModal(false)}
+              className="absolute -top-10 right-0 text-white hover:text-slate-200"
+            >
+              <X className="h-7 w-7" />
+              <span className="sr-only">Close</span>
+            </button>
+            <img
+              src={userProfileImage}
+              alt="Profile"
+              className="w-full aspect-square rounded-2xl object-cover shadow-2xl border-4 border-white"
+              style={{ backgroundColor: "#f3f4f6" }}
+              onError={(e) => {
+                const originalUrl = userProfileImage
+                  .replace("thumbnail?", "uc?export=view&")
+                  .replace("&sz=w150", "");
+                e.target.src = originalUrl;
+              }}
+            />
+            <button
+              onClick={() => {
+                setShowImageViewModal(false);
+                setShowImageUploadModal(true);
+              }}
+              className="mt-4 w-full flex items-center justify-center gap-2 bg-white text-slate-700 py-2.5 rounded-xl text-sm font-semibold shadow-md hover:bg-slate-50 transition-colors"
+            >
+              <Edit3 className="h-4 w-4" />
+              Change Photo
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Photo Upload Modal */}
+      {showImageUploadModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Upload Profile Image
+              </h3>
+              <button
+                onClick={() => {
+                  setShowImageUploadModal(false);
+                  setSelectedFile(null);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select Image File
+                </label>
+                <input
+                  type="file"
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"
+                  onChange={handleFileSelect}
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Supported formats: JPG, PNG, GIF (Max 10MB)
+                </p>
+              </div>
+
+              {selectedFile && (
+                <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                  <Upload className="h-5 w-5 text-purple-600" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900">
+                      {selectedFile.name}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex space-x-3 pt-4">
+                <button
+                  onClick={() => {
+                    setShowImageUploadModal(false);
+                    setSelectedFile(null);
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={uploadImageAndUpdateWhatsApp}
+                  disabled={!selectedFile || uploadingImage}
+                  className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-md text-sm font-medium hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                >
+                  {uploadingImage ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Uploading...
+                    </>
+                  ) : (
+                    "Upload Image"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 items-center justify-between px-4 md:px-6 m-3 mb-0 rounded-2xl shadow-sm" style={{ background: 'rgba(255,255,255,0.45)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.5)' }}>
-          <div className="flex md:hidden w-8"></div>
-          <h1 className="text-sm md:text-lg font-bold flex items-center gap-2">
-            <span className="text-slate-700">
+        <header className="flex min-h-14 items-center justify-between gap-2 px-3 sm:px-4 md:px-6 m-3 mb-0 rounded-2xl shadow-sm py-2" style={{ background: 'rgba(255,255,255,0.45)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.5)' }}>
+          <div className="flex md:hidden w-8 shrink-0"></div>
+          <h1 className="flex min-w-0 flex-1 items-center gap-2 text-sm md:text-lg font-bold">
+            <span className="min-w-0 truncate text-slate-700">
               {(() => {
                 const hour = new Date().getHours()
                 let greeting = "Good Morning"
                 if (hour >= 12 && hour < 18) greeting = "Good Afternoon"
                 else if (hour >= 18) greeting = "Good Evening"
 
-                return `${greeting}, ${username ? username.toUpperCase() : "USER"}! Welcome On Board`
+                return (
+                  <>
+                    {greeting}, {username ? username.toUpperCase() : "USER"}
+                    <span className="hidden sm:inline">! Welcome On Board</span>
+                  </>
+                )
               })()}
             </span>
-            <span className="animate-bounce inline-block">👋</span>
+            <span className="animate-bounce inline-block shrink-0">👋</span>
           </h1>
+
+          {/* Profile DP + user details */}
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <div className="hidden sm:block text-right leading-tight">
+              <p className="text-sm font-bold text-slate-700">{username ? username.toUpperCase() : "USER"}</p>
+              <p className="text-xs font-medium text-slate-500 capitalize">{userRole || "user"}{userEmail ? ` · ${userEmail}` : ""}</p>
+            </div>
+            <div className="relative group shrink-0">
+              {userProfileImage ? (
+                <div className="relative">
+                  <img
+                    src={userProfileImage}
+                    alt="Profile"
+                    className="h-9 w-9 sm:h-11 sm:w-11 rounded-full object-cover border-2 border-white cursor-pointer transition-all duration-200 group-hover:brightness-75 shadow-md"
+                    style={{ backgroundColor: "#f3f4f6", objectPosition: "center" }}
+                    onClick={() => setShowImageViewModal(true)}
+                    title="View profile photo"
+                    onError={(e) => {
+                      const originalUrl = userProfileImage
+                        .replace("thumbnail?", "uc?export=view&")
+                        .replace("&sz=w150", "");
+                      e.target.src = originalUrl;
+                    }}
+                  />
+                  {/* Purely visual dim-on-hover, does not intercept clicks so the image's own view-modal click keeps working */}
+                  <div className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black bg-opacity-30 pointer-events-none" />
+                  {/* Small edit badge: separate click target so "view" and "edit" don't fight over the same click */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowImageUploadModal(true);
+                    }}
+                    className="absolute -bottom-0.5 -right-0.5 flex items-center justify-center h-4 w-4 sm:h-5 sm:w-5 rounded-full bg-purple-600 border-2 border-white shadow-sm hover:bg-purple-700 transition-colors"
+                    title="Change profile photo"
+                  >
+                    <Edit3 className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-white" />
+                  </button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <div
+                    className="h-9 w-9 sm:h-11 sm:w-11 rounded-full bg-purple-500 flex items-center justify-center border-2 border-white cursor-pointer transition-all duration-200 group-hover:brightness-75 shadow-md"
+                    onClick={() => setShowImageUploadModal(true)}
+                  >
+                    <User className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
+                  </div>
+                  <div
+                    className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black bg-opacity-30 rounded-full cursor-pointer"
+                    onClick={() => setShowImageUploadModal(true)}
+                  >
+                    <Edit3 className="h-4 w-4 text-white" />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/*<button
             onClick={() => setIsLicenseModalOpen(true)}
             className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2"

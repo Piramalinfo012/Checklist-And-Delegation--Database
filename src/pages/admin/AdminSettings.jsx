@@ -1667,52 +1667,52 @@ export default function AdminSettings() {
         {/* Overview Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {/* Card 1: Users Count */}
-          <div className="bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
+          <div className="card-3d-wrapper card-3d-emerald">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Active User IDs</span>
-              <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600">
+              <div className="crystal-orb-3d crystal-orb-emerald">
                 <Users className="h-5 w-5" />
               </div>
             </div>
             <div className="mt-3">
-              <div className="text-2xl font-black text-emerald-700">{users.length} Users</div>
+              <div className="text-2xl number-3d-text text-emerald-700">{users.length} Users</div>
               <p className="text-xs text-slate-500 mt-0.5">Stored in Supabase 'Whatsapp' table</p>
             </div>
           </div>
 
           {/* Card 2: Checklist Count */}
-          <div className="bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
+          <div className="card-3d-wrapper card-3d-blue">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Checklist Table</span>
-              <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-600">
+              <div className="crystal-orb-3d crystal-orb-blue">
                 <ListChecks className="h-5 w-5" />
               </div>
             </div>
             <div className="mt-3">
-              <div className="text-2xl font-black text-slate-800">{checklistCount.toLocaleString()}</div>
+              <div className="text-2xl number-3d-text text-slate-800">{checklistCount.toLocaleString()}</div>
               <p className="text-xs text-slate-500 mt-0.5">Total Checklist rows in Supabase</p>
             </div>
           </div>
 
           {/* Card 3: Delegation Count */}
-          <div className="bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
+          <div className="card-3d-wrapper card-3d-purple">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Delegation Table</span>
-              <div className="p-2.5 rounded-xl bg-purple-50 text-purple-600">
+              <div className="crystal-orb-3d crystal-orb-purple">
                 <Layers className="h-5 w-5" />
               </div>
             </div>
             <div className="mt-3">
-              <div className="text-2xl font-black text-purple-700">{delegationCount.toLocaleString()}</div>
+              <div className="text-2xl number-3d-text text-purple-700">{delegationCount.toLocaleString()}</div>
               <p className="text-xs text-slate-500 mt-0.5">Total Delegation rows in Supabase</p>
             </div>
           </div>
 
           {/* Card 4: Working Day Calendar */}
-          <div className="bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
+          <div className={`card-3d-wrapper ${isWorkingDayToday ? 'card-3d-emerald' : 'card-3d-rose'}`}>
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Working Calendar</span>
-              <div className={`p-2.5 rounded-xl ${isWorkingDayToday ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+              <div className={`crystal-orb-3d ${isWorkingDayToday ? 'crystal-orb-emerald' : 'crystal-orb-rose'}`}>
                 <Calendar className="h-5 w-5" />
               </div>
             </div>
@@ -1733,63 +1733,66 @@ export default function AdminSettings() {
         {/* NEW DEDICATED SECTION 1: USER ID MANAGEMENT & CREATION (WHATSAPP TABLE)   */}
         {/* ========================================================================= */}
         <div className="bg-white/90 backdrop-blur-xl border-2 border-emerald-200/80 rounded-3xl p-6 md:p-8 shadow-md space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-            <div className="flex items-center gap-3.5">
-              <div className="p-3 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-lg shadow-emerald-500/20">
-                <Users className="h-6 w-6" />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 border-b border-slate-100 pb-6">
+            <div className="flex items-center gap-4">
+              <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 text-white shadow-lg shadow-emerald-500/30 ring-4 ring-emerald-50">
+                <Users className="h-7 w-7" />
               </div>
               <div>
-                <h2 className="text-xl font-extrabold text-slate-800 flex items-center gap-2">
-                  <span>👤 User ID Directory & Management</span>
-                  <span className="px-2.5 py-0.5 text-[11px] font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                    Whatsapp Table ({users.length} Users)
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h2 className="text-xl font-extrabold tracking-tight text-slate-800">
+                    User ID Directory &amp; Management
+                  </h2>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                    Whatsapp Table &middot; {users.length} Users
                   </span>
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
                   Naye user IDs create karein, passwords reset karein aur roles (Admin / User) manage karein.
                 </p>
               </div>
             </div>
 
             {/* Action Buttons */}
-            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+            <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
               <button
                 onClick={() => handleDownloadCSV('Whatsapp')}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
+                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:shadow-md active:scale-95"
                 title="Download all users to CSV"
               >
-                <Download className="h-3.5 w-3.5 text-slate-600" />
-                <span>Export Users CSV</span>
+                <Download className="h-3.5 w-3.5 text-slate-500" />
+                <span>Export CSV</span>
               </button>
 
               <button
                 onClick={handleOpenCreateUserModal}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition-all active:scale-95"
+                className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-600/25 transition-all hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-600/30 active:scale-95"
               >
                 <UserPlus className="h-4 w-4" />
-                <span>+ Create New User ID</span>
+                <span>Create New User ID</span>
               </button>
             </div>
           </div>
 
           {/* User Filters */}
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto flex-1">
+            <div className="flex w-full flex-1 flex-wrap items-center gap-3 md:w-auto">
               <div className="relative flex-1 md:w-72">
-                <Search className="h-3.5 w-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
                   placeholder="Search user name, phone, dept..."
                   value={userSearchTerm}
                   onChange={(e) => setUserSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs transition-colors focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                 />
               </div>
 
               <select
                 value={userRoleFilter}
                 onChange={(e) => setUserRoleFilter(e.target.value)}
-                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-700 transition-colors focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
               >
                 <option value="ALL">All Roles</option>
                 <option value="ADMIN">🛡️ Admin Only</option>
@@ -1798,8 +1801,8 @@ export default function AdminSettings() {
               </select>
             </div>
 
-            <span className="text-xs font-medium text-slate-500">
-              Showing {filteredUsers.length} of {users.length} users
+            <span className="shrink-0 rounded-full bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-500">
+              Showing <span className="text-slate-700">{filteredUsers.length}</span> of {users.length} users
             </span>
           </div>
 
