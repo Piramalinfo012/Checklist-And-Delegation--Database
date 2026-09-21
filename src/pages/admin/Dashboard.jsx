@@ -1,7 +1,13 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { BarChart3, CheckCircle2, Clock, ListTodo, Users, AlertTriangle, Filter, User, Edit3, Upload, X, ChevronDown, Check, Search, TrendingUp, Calendar, MoreVertical, Bell, HelpCircle, ArrowUpRight, Sparkles, Layers, ShieldCheck, Activity } from 'lucide-react'
+import { 
+  BarChart3, CheckCircle2, Clock, ListTodo, Users, AlertTriangle, Filter, 
+  User, Edit3, Upload, X, ChevronDown, Check, Search, CreditCard, 
+  ArrowUpRight, ArrowDownRight, RefreshCw, Bell, HelpCircle, Layers, 
+  TrendingUp, Sparkles, MoreVertical, Wallet, ShieldCheck, ArrowRight, 
+  Activity, Calendar, Award, CheckCircle
+} from 'lucide-react'
 import AdminLayout from "../../components/layout/AdminLayout.jsx"
 import { supabase } from "../../lib/supabaseClient"
 import { uploadImageToCloudinary } from "../../lib/cloudinary"
@@ -16,7 +22,9 @@ import {
   ResponsiveContainer,
   PieChart,
   Pie,
-  Cell
+  Cell,
+  AreaChart,
+  Area
 } from "recharts"
 
 
@@ -666,12 +674,6 @@ export default function AdminDashboard() {
       const staffTrackingMap = new Map();
 
       if (Array.isArray(whatsappUsers)) {
-        const loggedInName = (sessionStorage.getItem('username') || '').toLowerCase();
-        const selfUser = whatsappUsers.find(u => (u['User name'] || u.Username || u.name || '').toLowerCase() === loggedInName);
-        if (selfUser && (selfUser.Photo || selfUser.Image)) {
-          setUserProfileImage(getDisplayableImageUrl(selfUser.Photo || selfUser.Image));
-        }
-
         whatsappUsers.forEach(u => {
           const name = (u['User name'] || u.Username || u.name || '').trim();
           if (name && !name.startsWith('DELETED_')) {
@@ -1256,58 +1258,6 @@ export default function AdminDashboard() {
     }
   }
 
-  // Semi-Circle Radial Progress Gauge Component
-  const RadialGauge = ({ percentage = 45 }) => {
-    const validPercent = Math.min(100, Math.max(0, parseFloat(percentage) || 0));
-    const radius = 64;
-    const strokeWidth = 12;
-    const circumference = radius * Math.PI; // Half circle circumference
-    const strokeDashoffset = circumference - (validPercent / 100) * circumference;
-
-    return (
-      <div className="relative flex flex-col items-center justify-center my-2">
-        <svg height="100" width="160" viewBox="0 0 160 100" className="overflow-visible">
-          <defs>
-            <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#38bdf8" />
-              <stop offset="35%" stopColor="#4ade80" />
-              <stop offset="70%" stopColor="#facc15" />
-              <stop offset="100%" stopColor="#fb7185" />
-            </linearGradient>
-            <filter id="gaugeGlow" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="3" result="blur" />
-              <feComposite in="SourceGraphic" in2="blur" operator="over" />
-            </filter>
-          </defs>
-          {/* Background Arc */}
-          <path
-            d="M 16,88 A 64,64 0 0,1 144,88"
-            fill="none"
-            stroke="rgba(255,255,255,0.18)"
-            strokeWidth={strokeWidth}
-            strokeLinecap="round"
-          />
-          {/* Active Progress Arc */}
-          <path
-            d="M 16,88 A 64,64 0 0,1 144,88"
-            fill="none"
-            stroke="url(#gaugeGradient)"
-            strokeWidth={strokeWidth}
-            strokeDasharray={`${circumference} ${circumference}`}
-            strokeDashoffset={strokeDashoffset}
-            strokeLinecap="round"
-            filter="url(#gaugeGlow)"
-            className="transition-all duration-1000 ease-out"
-          />
-        </svg>
-        <div className="absolute top-10 flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-3xl font-black tracking-tight text-white drop-shadow-md">{validPercent}%</span>
-          <span className="text-[10px] uppercase font-bold tracking-widest text-indigo-100/90 mt-0.5">Efficiency</span>
-        </div>
-      </div>
-    );
-  };
-
   // Tasks Overview Chart Component
   const TasksOverviewChart = () => {
     return (
@@ -1460,37 +1410,130 @@ export default function AdminDashboard() {
       </div>
     );
   };
+  const currentUsername = sessionStorage.getItem('username') || 'User';
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour >= 12 && hour < 18) return "Good Afternoon";
-    if (hour >= 18) return "Good Evening";
-    return "Good Morning";
+  // Area chart for Activity Graph
+  const ActivityAreaGraph = () => {
+    return (
+      <ResponsiveContainer width="100%" height={170}>
+        <AreaChart data={departmentData.barChartData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+          <defs>
+            <linearGradient id="emeraldAreaGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
+              <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
+            </linearGradient>
+            <linearGradient id="tealAreaGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="#06b6d4" stopOpacity={0.0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+          <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
+          <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
+          <Tooltip
+            contentStyle={{
+              borderRadius: '16px',
+              border: '1px solid rgba(16, 185, 129, 0.2)',
+              boxShadow: '0 10px 25px -5px rgba(16, 185, 129, 0.15)',
+              background: '#ffffff',
+              padding: '10px 14px',
+              fontSize: '12px'
+            }}
+          />
+          <Area
+            type="monotone"
+            dataKey="completed"
+            name="Completed"
+            stroke="#10b981"
+            strokeWidth={3}
+            fillOpacity={1}
+            fill="url(#emeraldAreaGradient)"
+          />
+          <Area
+            type="monotone"
+            dataKey="pending"
+            name="Pending"
+            stroke="#06b6d4"
+            strokeWidth={2}
+            strokeDasharray="4 4"
+            fillOpacity={1}
+            fill="url(#tealAreaGradient)"
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    );
   };
 
-  const currentUsername = sessionStorage.getItem('username') || 'User';
+  // Status Donut Chart for Monthly In Out
+  const StatusDonutChart = () => {
+    const donutData = [
+      { name: "Completed", value: departmentData.completedTasks, color: "#10b981" },
+      { name: "Pending", value: departmentData.pendingTasks, color: "#0ea5e9" },
+      { name: "Overdue", value: departmentData.overdueTasks, color: "#f43f5e" },
+      { name: "Mastered", value: departmentData.completedRatingThreePlus || 0, color: "#f59e0b" }
+    ].filter(item => item.value > 0);
+
+    const chartData = donutData.length > 0 ? donutData : [{ name: "No Tasks", value: 1, color: "#e2e8f0" }];
+
+    return (
+      <div className="relative flex flex-col items-center justify-center">
+        <ResponsiveContainer width="100%" height={170}>
+          <PieChart>
+            <Pie
+              data={chartData}
+              cx="50%"
+              cy="50%"
+              innerRadius={52}
+              outerRadius={74}
+              paddingAngle={4}
+              dataKey="value"
+              cornerRadius={6}
+            >
+              {chartData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.color} stroke="#ffffff" strokeWidth={2} />
+              ))}
+            </Pie>
+            <Tooltip
+              contentStyle={{
+                borderRadius: '12px',
+                border: '1px solid #e2e8f0',
+                background: '#ffffff',
+                fontSize: '12px',
+                boxShadow: '0 8px 20px rgba(0,0,0,0.08)'
+              }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="absolute top-[48px] flex flex-col items-center justify-center pointer-events-none">
+          <span className="text-xl font-black text-slate-800 tracking-tight">{departmentData.totalTasks}</span>
+          <span className="text-[10px] font-bold text-slate-400">Total (100%)</span>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <AdminLayout>
-      <div className="space-y-6 pb-8">
+      <div className="space-y-6 pb-8 bg-[#ebf8f2]/60 p-2 sm:p-4 rounded-[32px]">
         
         {/* ========================================================================= */}
-        {/* 1. TOP GREETING HEADER BANNER (Inspired by reference)                    */}
+        {/* 1. TOP HEADER (Walletz Mint Style)                                        */}
         {/* ========================================================================= */}
-        <div className="bg-white/95 backdrop-blur-xl border border-slate-200/80 rounded-[28px] px-6 py-4 shadow-[0_12px_32px_-8px_rgba(110,130,190,0.12)] flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-white rounded-[26px] p-4 sm:p-5 shadow-[0_10px_25px_-5px_rgba(16,185,129,0.06)] border border-emerald-100/60">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center font-black shadow-md shadow-emerald-500/30">
+                <Wallet className="h-4 w-4" />
+              </div>
               <h1 className="text-2xl font-black text-slate-800 tracking-tight">
-                {getGreeting()}, {currentUsername}
+                Dashboard
               </h1>
-              <span className="text-2xl animate-pulse inline-block">👋</span>
             </div>
-            <p className="text-xs font-semibold text-slate-400 mt-0.5 flex items-center gap-1.5 cursor-pointer hover:text-slate-600 transition-colors">
-              <span>Your daily {dashboardType === "delegation" ? "Delegation & Team" : "Checklist & Task"} overview update</span>
-              <ChevronDown className="h-3.5 w-3.5" />
+            <p className="text-xs font-semibold text-slate-400 mt-0.5">
+              Live Checklist & Delegation Operations Update
             </p>
             {dataLoadError && (
-              <p className="flex items-center gap-1.5 text-[11px] text-amber-600 mt-1.5 font-medium">
+              <p className="flex items-center gap-1.5 text-[11px] text-amber-600 mt-1 font-medium">
                 <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse"></span>
                 डेटा लोड हो रहा है... / Retrying automatically...
               </p>
@@ -1500,31 +1543,15 @@ export default function AdminDashboard() {
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-between md:justify-end">
             
             {/* Quick Search Pill */}
-            <div className="relative hidden sm:block w-48 lg:w-64">
-              <Search className="h-3.5 w-3.5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <div className="relative hidden sm:block w-48 lg:w-60">
+              <Search className="h-4 w-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
-                placeholder="Search anything..."
+                placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-200/80 rounded-full text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-inner"
+                className="w-full pl-9 pr-3 py-2 bg-[#f4fbf7] hover:bg-[#ebf8f2] focus:bg-white border border-emerald-100 rounded-2xl text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
               />
-            </div>
-
-            {/* Notification / Help Icons */}
-            <div className="flex items-center gap-1.5">
-              <button 
-                title="Notifications"
-                className="p-2 rounded-full bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-700 border border-slate-200/70 transition-all shadow-sm active:scale-95"
-              >
-                <Bell className="h-4 w-4" />
-              </button>
-              <button 
-                title="Help"
-                className="p-2 rounded-full bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-700 border border-slate-200/70 transition-all shadow-sm active:scale-95"
-              >
-                <HelpCircle className="h-4 w-4" />
-              </button>
             </div>
 
             {/* Mode Switcher Dropdown */}
@@ -1541,287 +1568,325 @@ export default function AdminDashboard() {
               />
             </div>
 
-            {/* User Profile DP Avatar */}
+            {/* User Profile Avatar & Info */}
             <div 
-              className="relative group cursor-pointer" 
+              className="flex items-center gap-3 pl-2 sm:border-l border-emerald-100 cursor-pointer group"
               onClick={() => setShowImageUploadModal(true)}
-              title="Click to change profile image"
+              title="Click to update Profile DP"
             >
-              {userProfileImage ? (
-                <div className="relative">
+              <div className="relative">
+                {userProfileImage ? (
                   <img
                     src={userProfileImage}
                     alt="Profile DP"
-                    className="w-10 h-10 rounded-full object-cover border-2 border-indigo-400/50 shadow-md transition-all group-hover:scale-105 group-hover:ring-2 group-hover:ring-indigo-400"
+                    className="w-11 h-11 rounded-full object-cover border-2 border-emerald-400/60 shadow-md group-hover:scale-105 transition-transform"
                     onError={(e) => {
                       e.target.onerror = null;
-                      e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUsername)}&background=6366f1&color=fff&bold=true`;
+                      e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUsername)}&background=10b981&color=fff&bold=true`;
                     }}
                   />
-                  <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-white shadow-sm"></div>
-                </div>
-              ) : (
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 text-white flex items-center justify-center font-bold text-sm shadow-md transition-all group-hover:scale-105">
+                ) : (
+                  <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-emerald-600 via-teal-500 to-emerald-400 text-white flex items-center justify-center font-bold text-sm shadow-md group-hover:scale-105 transition-transform">
                     {currentUsername.charAt(0).toUpperCase()}
                   </div>
-                  <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-white shadow-sm"></div>
+                )}
+                <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-white shadow-sm"></div>
+              </div>
+              <div className="hidden lg:block text-left">
+                <div className="text-xs font-bold text-slate-800 group-hover:text-emerald-600 transition-colors">
+                  Hello, {currentUsername}
                 </div>
-              )}
+                <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                  {isAdminUser() ? "Administrator" : "Team Member"}
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         {/* ========================================================================= */}
-        {/* 2. SUMMARY CARDS ROW (Bills section in reference with colored ribbons)   */}
+        {/* 2. TOP HERO ROW (Titanium Smart Card + Task Portfolio Stats Panel)        */}
         {/* ========================================================================= */}
-        <div>
-          <div className="flex items-center justify-between mb-3 px-1">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-              <span>Task & Activity Metrics</span>
-            </h2>
-            <ChevronDown className="h-4 w-4 text-slate-400" />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-5 lg:grid-cols-12 items-stretch">
+          
+          {/* LEFT: Brushed Titanium Dark Card (Matches screenshot card) */}
+          <div className="lg:col-span-4 relative group">
+            {/* Tilted emerald glass card layer behind */}
+            <div className="absolute -top-1.5 -right-1.5 w-full h-full bg-emerald-400/30 rounded-[28px] -rotate-3 transition-transform group-hover:-rotate-4 pointer-events-none"></div>
             
-            {/* Card 1: Total Tasks (Blue / Indigo Accent Ribbon) */}
-            <div className="bg-white/95 rounded-3xl p-5 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70 hover:-translate-y-1 hover:shadow-[0_18px_35px_-8px_rgba(99,102,241,0.18)] transition-all duration-300 relative overflow-hidden group">
-              <div className="absolute right-0 top-0 bottom-0 w-2.5 bg-gradient-to-b from-blue-500 to-indigo-600 rounded-r-3xl"></div>
-              
-              <div className="flex items-start justify-between">
-                <div className="p-3 rounded-2xl bg-blue-50 text-blue-600 shadow-sm group-hover:scale-105 transition-transform">
-                  <Calendar className="h-5 w-5" />
+            <div className="relative bg-gradient-to-br from-[#1e293b] via-[#0f172a] to-[#020617] text-white rounded-[26px] p-6 shadow-xl border border-slate-700/60 flex flex-col justify-between min-h-[220px]">
+              {/* Card top row */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-6 rounded-md bg-gradient-to-r from-amber-300 via-amber-400 to-amber-200 shadow-inner flex items-center justify-center">
+                    <div className="w-5 h-3.5 border border-amber-600/40 rounded-sm"></div>
+                  </div>
+                  <span className="text-[10px] font-mono tracking-widest text-slate-400">OPERATIONS CARD</span>
                 </div>
-                <div className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-extrabold border border-blue-100 flex items-center gap-1">
-                  <span>100%</span>
-                  <ArrowUpRight className="h-3 w-3" />
-                </div>
+                <CreditCard className="h-5 w-5 text-slate-400" />
               </div>
 
-              <div className="mt-4">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Tasks</span>
-                <div className="text-3xl font-black text-slate-800 tracking-tight mt-0.5 flex items-baseline gap-2">
-                  <span>{departmentData.totalTasks}</span>
-                  <span className="text-xs font-bold text-slate-400">active</span>
+              {/* Card middle: Live Completion Health */}
+              <div className="my-3">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Completion Health</span>
+                <div className="text-3xl font-black tracking-tight text-white mt-0.5 flex items-baseline gap-2">
+                  <span>{departmentData.completionRate}%</span>
+                  <span className="text-xs font-semibold text-emerald-400">Efficiency</span>
                 </div>
-                <p className="text-[11px] font-medium text-slate-400 mt-1">
-                  {dashboardType === "delegation" ? "All delegation tasks" : "Checklist tasks (up to today)"}
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Active Tasks: {departmentData.totalTasks} | Completed: {departmentData.completedTasks}
                 </p>
               </div>
+
+              {/* Card bottom row: Action icon */}
+              <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                <span className="text-xs font-semibold text-slate-300 tracking-wider">
+                  {dashboardType === "delegation" ? "Delegation Operations" : "Checklist Operations"}
+                </span>
+                <button
+                  onClick={() => getDepartmentData()}
+                  title="Refresh live data"
+                  className="w-9 h-9 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/40 hover:bg-emerald-400 transition-all active:scale-95"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT: Task Portfolio Metrics Panel (Matches screenshot metrics) */}
+          <div className="lg:col-span-8 bg-white rounded-[26px] p-6 shadow-[0_10px_25px_-5px_rgba(16,185,129,0.06)] border border-emerald-100/60 flex flex-col justify-between">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-black text-slate-800">
+                  {dashboardType === "delegation" ? "My Delegation Portfolio" : "My Task Portfolio"}
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Real-time workload & operational metrics
+                </p>
+              </div>
+              <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-100">
+                Live Status
+              </span>
             </div>
 
-            {/* Card 2: Completed Tasks (Teal / Emerald Accent Ribbon) */}
-            <div className="bg-white/95 rounded-3xl p-5 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70 hover:-translate-y-1 hover:shadow-[0_18px_35px_-8px_rgba(16,185,129,0.18)] transition-all duration-300 relative overflow-hidden group">
-              <div className="absolute right-0 top-0 bottom-0 w-2.5 bg-gradient-to-b from-teal-400 to-emerald-600 rounded-r-3xl"></div>
-              
-              <div className="flex items-start justify-between">
-                <div className="p-3 rounded-2xl bg-emerald-50 text-emerald-600 shadow-sm group-hover:scale-105 transition-transform">
-                  <CheckCircle2 className="h-5 w-5" />
-                </div>
-                <div className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-extrabold border border-emerald-100 flex items-center gap-1">
-                  <span>+{departmentData.completionRate}%</span>
-                  <ArrowUpRight className="h-3 w-3" />
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4">
+              {/* Completed Tasks Column */}
+              <div className="space-y-1 sm:pr-4 sm:border-r border-slate-100">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                   {dashboardType === "delegation" ? "Completed Once" : "Completed Tasks"}
                 </span>
-                <div className="text-3xl font-black text-emerald-600 tracking-tight mt-0.5 flex items-baseline gap-2">
-                  <span>{dashboardType === "delegation" ? departmentData.completedRatingOne : departmentData.completedTasks}</span>
-                  <span className="text-xs font-bold text-slate-400">done</span>
+                <div className="flex items-baseline gap-2.5">
+                  <span className="text-3xl font-black text-slate-800 tracking-tight">
+                    {dashboardType === "delegation" ? departmentData.completedRatingOne : departmentData.completedTasks}
+                  </span>
+                  <span className="inline-flex items-center gap-0.5 text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                    <ArrowUpRight className="h-3.5 w-3.5" />
+                    <span>{departmentData.completionRate}%</span>
+                  </span>
                 </div>
-                <p className="text-[11px] font-medium text-slate-400 mt-1">
-                  {dashboardType === "delegation" ? "Delegations closed once" : "Successfully verified"}
+                <p className="text-[11px] font-medium text-slate-400 pt-1">
+                  Verified & completed checklist tasks
                 </p>
               </div>
-            </div>
 
-            {/* Card 3: Pending Tasks (Amber / Orange Accent Ribbon) */}
-            <div className="bg-white/95 rounded-3xl p-5 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70 hover:-translate-y-1 hover:shadow-[0_18px_35px_-8px_rgba(245,158,11,0.18)] transition-all duration-300 relative overflow-hidden group">
-              <div className="absolute right-0 top-0 bottom-0 w-2.5 bg-gradient-to-b from-amber-400 to-orange-500 rounded-r-3xl"></div>
-              
-              <div className="flex items-start justify-between">
-                <div className="p-3 rounded-2xl bg-amber-50 text-amber-600 shadow-sm group-hover:scale-105 transition-transform">
-                  <Clock className="h-5 w-5" />
-                </div>
-                <div className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-extrabold border border-amber-100 flex items-center gap-1">
-                  <span>{departmentData.totalTasks > 0 ? Math.round((departmentData.pendingTasks / departmentData.totalTasks) * 100) : 0}%</span>
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  {dashboardType === "delegation" ? "Completed Twice" : "Pending Tasks"}
+              {/* Pending & Overdue Column */}
+              <div className="space-y-1">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  {dashboardType === "delegation" ? "Pending / Completed Twice" : "Pending & Overdue"}
                 </span>
-                <div className="text-3xl font-black text-amber-600 tracking-tight mt-0.5 flex items-baseline gap-2">
-                  <span>{dashboardType === "delegation" ? departmentData.completedRatingTwo : departmentData.pendingTasks}</span>
-                  <span className="text-xs font-bold text-slate-400">pending</span>
+                <div className="flex items-baseline gap-2.5">
+                  <span className="text-3xl font-black text-slate-800 tracking-tight">
+                    {dashboardType === "delegation" ? departmentData.completedRatingTwo : (departmentData.pendingTasks + departmentData.overdueTasks)}
+                  </span>
+                  <span className="inline-flex items-center gap-0.5 text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                    <Clock className="h-3.5 w-3.5" />
+                    <span>{departmentData.overdueTasks > 0 ? `${departmentData.overdueTasks} Overdue` : 'On Track'}</span>
+                  </span>
                 </div>
-                <p className="text-[11px] font-medium text-slate-400 mt-1">
-                  {dashboardType === "delegation" ? "Tasks completed twice" : "Today & active overdue"}
+                <p className="text-[11px] font-medium text-slate-400 pt-1">
+                  Active workload awaiting staff completion
                 </p>
               </div>
             </div>
-
-            {/* Card 4: Overdue Tasks (Rose / Pink Accent Ribbon) */}
-            <div className="bg-white/95 rounded-3xl p-5 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70 hover:-translate-y-1 hover:shadow-[0_18px_35px_-8px_rgba(244,63,94,0.18)] transition-all duration-300 relative overflow-hidden group">
-              <div className="absolute right-0 top-0 bottom-0 w-2.5 bg-gradient-to-b from-rose-400 to-pink-600 rounded-r-3xl"></div>
-              
-              <div className="flex items-start justify-between">
-                <div className="p-3 rounded-2xl bg-rose-50 text-rose-600 shadow-sm group-hover:scale-105 transition-transform">
-                  <AlertTriangle className="h-5 w-5" />
-                </div>
-                <div className="px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 text-[10px] font-extrabold border border-rose-100 flex items-center gap-1">
-                  <span>{departmentData.overdueTasks > 0 ? `-${departmentData.overdueTasks}` : '0'}</span>
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  {dashboardType === "delegation" ? "Completed 3+ Times" : "Overdue Tasks"}
-                </span>
-                <div className="text-3xl font-black text-rose-600 tracking-tight mt-0.5 flex items-baseline gap-2">
-                  <span>{dashboardType === "delegation" ? departmentData.completedRatingThreePlus : departmentData.overdueTasks}</span>
-                  <span className="text-xs font-bold text-slate-400">action</span>
-                </div>
-                <p className="text-[11px] font-medium text-slate-400 mt-1">
-                  {dashboardType === "delegation" ? "Mastered tasks (3+ times)" : "Past due dates"}
-                </p>
-              </div>
-            </div>
-
           </div>
+
         </div>
 
         {/* ========================================================================= */}
-        {/* 3. SHOWCASE SECTION (Hero Radial Gauge Card + Center Metric + Bar Chart)  */}
+        {/* 3. MIDDLE SECTION (Activity Graph + Donut Chart + Staff Updates)          */}
         {/* ========================================================================= */}
-        <div>
-          <div className="flex items-center justify-between mb-3 px-1">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-              <span>Performance Analytics & Visual Gauge</span>
-            </h2>
-            <ChevronDown className="h-4 w-4 text-slate-400" />
+        <div className="grid gap-5 lg:grid-cols-12 items-stretch">
+          
+          {/* Activity Graph Card (Left Column) */}
+          <div className="lg:col-span-5 bg-white rounded-[26px] p-5 sm:p-6 shadow-[0_10px_25px_-5px_rgba(16,185,129,0.06)] border border-emerald-100/60 flex flex-col justify-between">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div>
+                <h3 className="text-sm font-black text-slate-800">Activity Graph</h3>
+                <p className="text-[11px] text-slate-400">Monthly workload execution curve</p>
+              </div>
+              <span className="px-2.5 py-1 rounded-xl bg-slate-50 text-slate-600 text-xs font-bold border border-slate-200/70 flex items-center gap-1">
+                <span>This Year</span>
+                <ChevronDown className="h-3 w-3" />
+              </span>
+            </div>
+
+            <div className="pt-2">
+              <ActivityAreaGraph />
+            </div>
+
+            {/* 4 Breakdown Progress Bars */}
+            <div className="space-y-2.5 pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-500">Total Tasks</span>
+                <span className="font-bold text-emerald-600">{departmentData.totalTasks}</span>
+              </div>
+              <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                <div className="bg-emerald-500 h-2 rounded-full" style={{ width: '100%' }}></div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-500">Completed</span>
+                <span className="font-bold text-sky-600">{departmentData.completedTasks} ({departmentData.completionRate}%)</span>
+              </div>
+              <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                <div className="bg-sky-500 h-2 rounded-full" style={{ width: `${departmentData.completionRate}%` }}></div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-500">Pending</span>
+                <span className="font-bold text-amber-600">{departmentData.pendingTasks}</span>
+              </div>
+              <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                <div 
+                  className="bg-amber-400 h-2 rounded-full" 
+                  style={{ width: `${departmentData.totalTasks > 0 ? (departmentData.pendingTasks / departmentData.totalTasks) * 100 : 0}%` }}
+                ></div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-500">Overdue</span>
+                <span className="font-bold text-rose-600">{departmentData.overdueTasks}</span>
+              </div>
+              <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                <div 
+                  className="bg-rose-500 h-2 rounded-full" 
+                  style={{ width: `${departmentData.totalTasks > 0 ? (departmentData.overdueTasks / departmentData.totalTasks) * 100 : 0}%` }}
+                ></div>
+              </div>
+            </div>
           </div>
 
-          <div className="grid gap-5 lg:grid-cols-12 items-stretch">
-            
-            {/* LEFT HERO CARD: Violet Gradient Phone-Card with Radial Gauge */}
-            <div className="lg:col-span-4 bg-gradient-to-br from-[#4338ca] via-[#6366f1] to-[#7e22ce] text-white rounded-3xl p-6 shadow-[0_20px_40px_-12px_rgba(99,102,241,0.4)] relative overflow-hidden flex flex-col justify-between min-h-[340px]">
-              
-              {/* Subtle phone notch curve decoration */}
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-28 h-4 bg-slate-900/20 rounded-b-2xl backdrop-blur-md"></div>
-              
-              <div className="flex items-center justify-between relative z-10">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-xl bg-white/10 backdrop-blur-md">
-                    <Activity className="h-4 w-4 text-white" />
-                  </div>
-                  <span className="text-xs font-extrabold uppercase tracking-wider text-indigo-100">Completion Meter</span>
-                </div>
-                <button className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors">
-                  <MoreVertical className="h-4 w-4 text-white" />
-                </button>
+          {/* Monthly In Out / Status Donut Chart (Center Column) */}
+          <div className="lg:col-span-4 bg-white rounded-[26px] p-5 sm:p-6 shadow-[0_10px_25px_-5px_rgba(16,185,129,0.06)] border border-emerald-100/60 flex flex-col items-center justify-between text-center">
+            <div className="w-full flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="text-left">
+                <h3 className="text-sm font-black text-slate-800">Task Distribution</h3>
+                <p className="text-[11px] text-slate-400">Category & status ratio</p>
               </div>
-
-              {/* Center Semi-Circle Radial Progress Gauge */}
-              <div className="my-auto py-2">
-                <RadialGauge percentage={departmentData.completionRate} />
-              </div>
-
-              {/* Bottom Quick Stats */}
-              <div className="relative z-10 pt-3 border-t border-white/15">
-                <span className="text-[11px] font-semibold text-indigo-200">Pending Execution</span>
-                <div className="text-2xl font-black tracking-tight text-white mt-0.5">
-                  {departmentData.pendingTasks} <span className="text-xs font-medium text-indigo-200">Tasks Remaining</span>
-                </div>
-                <div className="flex items-center justify-between text-[11px] text-indigo-200/90 mt-2">
-                  <span>Total Workload: {departmentData.totalTasks}</span>
-                  <span className="font-bold text-emerald-300">✓ {departmentData.completedTasks} Done</span>
-                </div>
-              </div>
+              <span className="p-1.5 rounded-xl bg-slate-50 text-slate-400">
+                <MoreVertical className="h-4 w-4" />
+              </span>
             </div>
 
-            {/* CENTER STACKED METRIC CARDS */}
-            <div className="lg:col-span-3 flex flex-col gap-4">
-              
-              {/* Top Stacked Card */}
-              <div className="flex-1 bg-white/95 rounded-3xl p-5 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70 hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden flex flex-col justify-between group">
-                <div className="absolute right-0 top-0 bottom-0 w-2 bg-gradient-to-b from-cyan-400 to-blue-500 rounded-r-3xl"></div>
-                <div className="flex items-start justify-between">
-                  <div className="p-2.5 rounded-2xl bg-cyan-50 text-cyan-600">
-                    <ShieldCheck className="h-5 w-5" />
-                  </div>
-                  <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold">
-                    +5% MoM
-                  </span>
-                </div>
-                <div className="mt-3">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Efficiency Index</span>
-                  <div className="text-2xl font-black text-slate-800 tracking-tight mt-0.5">
-                    {departmentData.completionRate}%
-                  </div>
-                  <span className="text-[10px] text-slate-400 font-medium">Monthly calculated velocity</span>
-                </div>
-              </div>
-
-              {/* Bottom Stacked Card */}
-              <div className="flex-1 bg-white/95 rounded-3xl p-5 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70 hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden flex flex-col justify-between group">
-                <div className="absolute right-0 top-0 bottom-0 w-2 bg-gradient-to-b from-purple-500 to-indigo-600 rounded-r-3xl"></div>
-                <div className="flex items-start justify-between">
-                  <div className="p-2.5 rounded-2xl bg-purple-50 text-purple-600">
-                    <Layers className="h-5 w-5" />
-                  </div>
-                  <span className="px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 text-[10px] font-bold border border-purple-100">
-                    Active
-                  </span>
-                </div>
-                <div className="mt-3">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Staff Allocation</span>
-                  <div className="text-2xl font-black text-slate-800 tracking-tight mt-0.5">
-                    {departmentData.staffMembers.length} Members
-                  </div>
-                  <span className="text-[10px] text-slate-400 font-medium">Assigned active staff pipeline</span>
-                </div>
-              </div>
-
+            <div className="my-auto py-2">
+              <StatusDonutChart />
             </div>
 
-            {/* RIGHT ACTIVITY BAR CHART CARD */}
-            <div className="lg:col-span-5 bg-white/95 rounded-3xl p-6 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70 flex flex-col justify-between">
+            {/* Legend tags */}
+            <div className="grid grid-cols-2 gap-2.5 w-full pt-3 border-t border-slate-100 text-left">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-md bg-emerald-500 shrink-0"></span>
+                <span className="text-[11px] font-semibold text-slate-600">Completed ({departmentData.completedTasks})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-md bg-sky-500 shrink-0"></span>
+                <span className="text-[11px] font-semibold text-slate-600">Pending ({departmentData.pendingTasks})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-md bg-rose-500 shrink-0"></span>
+                <span className="text-[11px] font-semibold text-slate-600">Overdue ({departmentData.overdueTasks})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-md bg-amber-400 shrink-0"></span>
+                <span className="text-[11px] font-semibold text-slate-600">
+                  {dashboardType === "delegation" ? `3+ (${departmentData.completedRatingThreePlus})` : 'All Active'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Staff Activity & Verification Card (Right Column) */}
+          <div className="lg:col-span-3 bg-white rounded-[26px] p-5 shadow-[0_10px_25px_-5px_rgba(16,185,129,0.06)] border border-emerald-100/60 flex flex-col justify-between gap-4">
+            <div>
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div>
-                  <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
-                    <span>Task Activity & Trend</span>
-                    <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
-                      Sep 2026
-                    </span>
-                  </h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Completed vs Pending monthly distribution</p>
-                </div>
-                <button className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
-                  <MoreVertical className="h-4 w-4" />
-                </button>
+                <h3 className="text-sm font-black text-slate-800 flex items-center gap-1.5">
+                  <Users className="h-4 w-4 text-emerald-600" />
+                  <span>Staff Activity</span>
+                </h3>
+                <span className="text-[10px] font-bold text-slate-400">Live</span>
               </div>
 
-              <div className="pt-4 h-[240px]">
-                <TasksOverviewChart />
+              {/* Staff mini-list with DP */}
+              <div className="space-y-3 pt-3">
+                {departmentData.staffMembers.slice(0, 3).map((staff) => {
+                  const avatarSrc = staff.photo
+                    ? getDisplayableImageUrl(staff.photo)
+                    : `https://ui-avatars.com/api/?name=${encodeURIComponent(staff.name || 'U')}&background=10b981&color=fff&bold=true`;
+
+                  return (
+                    <div key={staff.id} className="flex items-center justify-between p-2 rounded-2xl hover:bg-[#f4fbf7] transition-colors border border-slate-50">
+                      <div className="flex items-center gap-2.5">
+                        <img
+                          src={avatarSrc}
+                          alt={staff.name}
+                          className="w-9 h-9 rounded-full object-cover border border-emerald-200 shadow-sm shrink-0"
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(staff.name || 'U')}&background=10b981&color=fff&bold=true`;
+                          }}
+                        />
+                        <div>
+                          <div className="text-xs font-bold text-slate-800 truncate max-w-[90px]">{staff.name}</div>
+                          <div className="text-[10px] text-slate-400">{staff.completedTasks} tasks done</div>
+                        </div>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-extrabold border border-emerald-100">
+                        {staff.progress}%
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
+            {/* Task Verification / Performance Card */}
+            <div className="bg-gradient-to-br from-[#10b981] via-[#059669] to-[#047857] text-white rounded-[22px] p-4 shadow-lg shadow-emerald-500/20 relative overflow-hidden">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-emerald-200" />
+                <span className="text-xs font-black">Verify Operations</span>
+              </div>
+              <p className="text-[11px] text-emerald-100 mt-1">
+                Ensure all daily tasks and delegations are closed on schedule.
+              </p>
+              <button 
+                onClick={() => setActiveTab("overview")}
+                className="mt-3 w-full py-2 bg-white text-emerald-800 rounded-xl text-xs font-extrabold hover:bg-emerald-50 transition-colors shadow-sm"
+              >
+                View Staff Summary →
+              </button>
+            </div>
           </div>
+
         </div>
 
         {/* ========================================================================= */}
-        {/* 4. TASK NAVIGATION TABS & WORKFLOW FILTER SECTION                         */}
+        {/* 4. TASK NAVIGATION SECTION (Recent / Upcoming / Overdue Tasks)             */}
         {/* ========================================================================= */}
-        <div className="w-full overflow-hidden rounded-3xl bg-white/95 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70">
-          <div className="grid grid-cols-3 p-2 gap-1.5 bg-slate-50/80 border-b border-slate-100">
+        <div className="w-full overflow-hidden rounded-[26px] bg-white shadow-[0_10px_25px_-5px_rgba(16,185,129,0.06)] border border-emerald-100/60">
+          <div className="grid grid-cols-3 p-1.5 gap-1.5 bg-[#f4fbf7] border-b border-emerald-100/60">
             <button
-              className={`py-3 text-center text-xs font-bold rounded-2xl transition-all duration-200 ${
+              className={`py-2.5 text-center text-xs font-bold rounded-2xl transition-all duration-200 ${
                 taskView === "recent"
                   ? "bg-slate-900 text-white shadow-md shadow-slate-900/20"
                   : "text-slate-600 hover:bg-white/80"
@@ -1831,7 +1896,7 @@ export default function AdminDashboard() {
               {dashboardType === "delegation" ? "📋 Today Tasks" : "⚡ Recent Tasks"}
             </button>
             <button
-              className={`py-3 text-center text-xs font-bold rounded-2xl transition-all duration-200 ${
+              className={`py-2.5 text-center text-xs font-bold rounded-2xl transition-all duration-200 ${
                 taskView === "upcoming"
                   ? "bg-slate-900 text-white shadow-md shadow-slate-900/20"
                   : "text-slate-600 hover:bg-white/80"
@@ -1841,7 +1906,7 @@ export default function AdminDashboard() {
               {dashboardType === "delegation" ? "🔮 Future Tasks" : "📅 Upcoming Tasks"}
             </button>
             <button
-              className={`py-3 text-center text-xs font-bold rounded-2xl transition-all duration-200 ${
+              className={`py-2.5 text-center text-xs font-bold rounded-2xl transition-all duration-200 ${
                 taskView === "overdue"
                   ? "bg-rose-600 text-white shadow-md shadow-rose-600/20"
                   : "text-rose-600 hover:bg-rose-50"
@@ -1859,7 +1924,7 @@ export default function AdminDashboard() {
                   htmlFor="search"
                   className="flex items-center text-slate-700 font-bold text-xs"
                 >
-                  <Search className="h-3.5 w-3.5 mr-1.5 text-indigo-600" />
+                  <Search className="h-3.5 w-3.5 mr-1.5 text-emerald-600" />
                   Search Tasks
                 </label>
                 <div className="relative">
@@ -1868,7 +1933,7 @@ export default function AdminDashboard() {
                     placeholder="Search by task title, department or ID..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-slate-50 hover:bg-slate-100/70 focus:bg-white text-slate-800 text-xs font-medium placeholder:text-slate-400 border border-slate-200 focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-[#f4fbf7] hover:bg-[#ebf8f2] focus:bg-white text-slate-800 text-xs font-medium placeholder:text-slate-400 border border-emerald-100 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
                   />
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                     <Search className="h-4 w-4 text-slate-400" />
@@ -1880,14 +1945,14 @@ export default function AdminDashboard() {
                   htmlFor="staff-filter"
                   className="flex items-center text-slate-700 font-bold text-xs"
                 >
-                  <Filter className="h-3.5 w-3.5 mr-1.5 text-indigo-600" />
+                  <Filter className="h-3.5 w-3.5 mr-1.5 text-emerald-600" />
                   Filter by Staff
                 </label>
                 <CustomDropdown
                   value={filterStaff}
                   onChange={setFilterStaff}
                   options={[
-                    { value: "all", label: "All Staff" },
+                    { value: "all", label: "All Staff Members" },
                     ...departmentData.staffMembers
                       .filter(
                         (staff) =>
@@ -1898,15 +1963,15 @@ export default function AdminDashboard() {
                       .map((staff) => ({ value: staff.name, label: staff.name }))
                   ]}
                   placeholder="Filter by Staff"
-                  className="w-full"
+                  className="w-full text-xs"
                   searchable={true}
                 />
               </div>
             </div>
 
             {getTasksByView(taskView).length === 0 ? (
-              <div className="text-center py-12 text-slate-400 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
-                <ListTodo className="h-8 w-8 mx-auto text-slate-300 mb-2" />
+              <div className="text-center py-10 text-slate-400 bg-[#f4fbf7] rounded-2xl border border-dashed border-emerald-100">
+                <ListTodo className="h-8 w-8 mx-auto text-emerald-300 mb-2" />
                 <p className="text-xs font-semibold">No tasks found matching your filters.</p>
               </div>
             ) : (
@@ -1915,7 +1980,7 @@ export default function AdminDashboard() {
                 style={{ maxHeight: "380px", overflowY: "auto" }}
               >
                 <table className="min-w-full divide-y divide-slate-100">
-                  <thead className="bg-slate-50/90 sticky top-0 z-10 backdrop-blur-md">
+                  <thead className="bg-[#f4fbf7] sticky top-0 z-10">
                     <tr>
                       <th scope="col" className="px-5 py-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                         Task ID
@@ -1936,8 +2001,8 @@ export default function AdminDashboard() {
                   </thead>
                   <tbody className="bg-white divide-y divide-slate-100">
                     {getTasksByView(taskView).map((task) => (
-                      <tr key={task.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="px-5 py-3.5 whitespace-nowrap text-xs font-bold text-indigo-600">
+                      <tr key={task.id} className="hover:bg-[#f4fbf7] transition-colors">
+                        <td className="px-5 py-3.5 whitespace-nowrap text-xs font-bold text-emerald-600">
                           #{task.id}
                         </td>
                         <td className="px-5 py-3.5 text-xs font-medium text-slate-800 max-w-xs truncate">
@@ -1964,16 +2029,16 @@ export default function AdminDashboard() {
         </div>
 
         {/* ========================================================================= */}
-        {/* 5. TABS (OVERVIEW / MIS / STAFF PERFORMANCE)                              */}
+        {/* 5. TABS (STAFF PERFORMANCE SUMMARY / MIS REPORT / CATEGORY DISTRIBUTION)   */}
         {/* ========================================================================= */}
         <div className="space-y-4">
-          <div className="bg-white/80 backdrop-blur-xl border border-slate-200/80 rounded-2xl p-1.5 flex space-x-1 shadow-sm">
+          <div className="bg-white border border-emerald-100/80 rounded-2xl p-1.5 flex space-x-1 shadow-sm">
             <button
               onClick={() => setActiveTab("overview")}
               className={`flex-1 py-2.5 text-center text-xs font-bold rounded-xl transition-all duration-200 ${
                 activeTab === "overview"
                   ? "bg-slate-900 text-white shadow-md"
-                  : "text-slate-600 hover:bg-slate-100"
+                  : "text-slate-600 hover:bg-[#f4fbf7]"
               }`}
             >
               📊 Staff Performance Summary
@@ -1983,7 +2048,7 @@ export default function AdminDashboard() {
               className={`flex-1 py-2.5 text-center text-xs font-bold rounded-xl transition-all duration-200 ${
                 activeTab === "mis"
                   ? "bg-slate-900 text-white shadow-md"
-                  : "text-slate-600 hover:bg-slate-100"
+                  : "text-slate-600 hover:bg-[#f4fbf7]"
               }`}
             >
               📑 MIS Report
@@ -1993,7 +2058,7 @@ export default function AdminDashboard() {
               className={`flex-1 py-2.5 text-center text-xs font-bold rounded-xl transition-all duration-200 ${
                 activeTab === "staff"
                   ? "bg-slate-900 text-white shadow-md"
-                  : "text-slate-600 hover:bg-slate-100"
+                  : "text-slate-600 hover:bg-[#f4fbf7]"
               }`}
             >
               👥 Category Distribution
@@ -2001,7 +2066,7 @@ export default function AdminDashboard() {
           </div>
 
           {activeTab === "overview" && (
-            <div className="bg-white/95 rounded-3xl p-6 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70">
+            <div className="bg-white rounded-[26px] p-6 shadow-[0_10px_25px_-5px_rgba(16,185,129,0.06)] border border-emerald-100/60">
               <div className="pb-4 mb-4 border-b border-slate-100 flex items-center justify-between">
                 <div>
                   <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
@@ -2016,23 +2081,6 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {activeTab === "staff" && (
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="bg-white/95 rounded-3xl p-6 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70">
-                <h3 className="text-sm font-bold text-slate-800 mb-1">Status Breakdown</h3>
-                <p className="text-xs text-slate-400 mb-4">Completed, Pending & Overdue tasks</p>
-                <TasksCompletionChart />
-              </div>
-              <div className="bg-white/95 rounded-3xl p-6 shadow-[0_12px_30px_-8px_rgba(112,144,176,0.14)] border border-slate-200/70">
-                <h3 className="text-sm font-bold text-slate-800 mb-1">Monthly Workload Trend</h3>
-                <p className="text-xs text-slate-400 mb-4">Monthly completed vs pending comparison</p>
-                <TasksOverviewChart />
-              </div>
-            </div>
-          )}
-
-
-          {/* UPDATED: Modified MIS Report section for delegation mode */}
           {activeTab === "mis" && (
             <div className="rounded-2xl shadow-sm" style={{ background: 'rgba(255,255,255,0.55)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.6)' }}>
               <div className="p-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.4)' }}>
