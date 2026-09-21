@@ -234,8 +234,8 @@ export default function AdminSettings() {
         supabase.from('Unique').select('*').limit(3000),
         supabase.from('Checklist').select('*', { count: 'exact', head: true }),
         supabase.from('Delegation').select('*', { count: 'exact', head: true }),
-        supabase.from('Working Day Calendar').select('*'),
-        supabase.from('Holiday List').select('*'),
+        supabase.from('Working Day Calendar').select('*').limit(3000),
+        supabase.from('Holiday List').select('*').limit(1000),
         supabase.from('Whatsapp').select('*').order('Username', { ascending: true })
       ]);
 
@@ -723,7 +723,7 @@ export default function AdminSettings() {
 
     const result = await runTaskGenerationTrigger({
       targetDate: targetDateObj,
-      ignoreCalendarCheck: specificId ? true : ignoreCalendarCheck,
+      ignoreCalendarCheck: ignoreCalendarCheck,
       specificTemplateId: specificId,
       forceRunSpecific: !!specificId,
       onProgress: (logEntry, allLogs) => {
@@ -1571,7 +1571,7 @@ export default function AdminSettings() {
   }, [holidays, todayObj]);
 
   const isTodayInCalendar = useMemo(() => {
-    if (calendarDates.length === 0) return true;
+    if (calendarDates.length === 0) return false;
     return calendarDates.some(c => {
       const cd = parseDateString(c.Date);
       return cd && isSameDay(cd, todayObj);

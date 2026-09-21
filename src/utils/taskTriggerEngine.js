@@ -291,37 +291,55 @@ export async function runTaskGenerationTrigger(options = {}) {
   addLog(`Starting task generation process for date: ${todayDDMMYYYY}...`);
 
   try {
-    // 1. Check Working Day Calendar & Holiday List if not ignored and not single template run
+    // 1. Check Working Day Calendar & Holiday List if not explicitly ignored
     let isWorkingDay = true;
     let holidayInfo = null;
+    let nonWorkingReason = null;
 
-    if (!ignoreCalendarCheck && !specificTemplateId) {
-      addLog(`Checking working day calendar and holiday schedule...`);
-      const [calRes, holRes] = await Promise.all([
-        supabase.from('Working Day Calendar').select('*'),
-        supabase.from('Holiday List').select('*')
+    if (!ignoreCalendarCheck) {
+      addLog(`Checking working day calendar and holiday schedule for ${todayDDMMYYYY}...`);
+      
+      const d = targetDateObj.getDate();
+      const m = targetDateObj.getMonth() + 1;
+      const y = targetDateObj.getFullYear();
+      const dateVariants = [
+        todayDDMMYYYY,
+        `${d}/${m}/${y}`,
+        `${String(d).padStart(2, '0')}/${m}/${y}`,
+        `${d}/${String(m).padStart(2, '0')}/${y}`
+      ];
+      const uniqueVariants = Array.from(new Set(dateVariants));
+
+      const [holRes, calRes] = await Promise.all([
+        supabase.from('Holiday List').select('*').limit(500),
+        supabase.from('Working Day Calendar').select('*').in('Date', uniqueVariants)
       ]);
 
       if (holRes.data && holRes.data.length > 0) {
         const foundHoliday = holRes.data.find(h => {
-          const hDate = parseDateString(h.Date);
+          const rawDate = String(h.Date || '').trim();
+          if (uniqueVariants.includes(rawDate)) return true;
+          const hDate = parseDateString(rawDate);
           return hDate && isSameDay(hDate, targetDateObj);
         });
+
         if (foundHoliday) {
           isWorkingDay = false;
           holidayInfo = foundHoliday.Holiday || 'Holiday';
+          nonWorkingReason = `Holiday: ${holidayInfo}`;
           addLog(`Target date ${todayDDMMYYYY} is a holiday: "${holidayInfo}"`, 'warning');
         }
       }
 
-      if (isWorkingDay && calRes.data && calRes.data.length > 0) {
-        const foundInCalendar = calRes.data.some(c => {
-          const cDate = parseDateString(c.Date);
-          return cDate && isSameDay(cDate, targetDateObj);
-        });
+      if (isWorkingDay) {
+        const foundInCalendar = calRes.data && calRes.data.length > 0;
         if (!foundInCalendar) {
           isWorkingDay = false;
-          addLog(`Target date ${todayDDMMYYYY} is marked as non-working day in calendar`, 'warning');
+          const isSunday = targetDateObj.getDay() === 0;
+          nonWorkingReason = isSunday 
+            ? `Target date ${todayDDMMYYYY} is Sunday (Non-working day)`
+            : `Target date ${todayDDMMYYYY} is not in Working Day Calendar`;
+          addLog(`${nonWorkingReason}`, 'warning');
         }
       }
 
@@ -330,7 +348,7 @@ export async function runTaskGenerationTrigger(options = {}) {
         return {
           success: true,
           skipped: true,
-          reason: holidayInfo ? `Holiday: ${holidayInfo}` : 'Non-working day',
+          reason: nonWorkingReason || (holidayInfo ? `Holiday: ${holidayInfo}` : 'Non-working day'),
           tasksGenerated: 0,
           generatedTasks: [],
           logs
