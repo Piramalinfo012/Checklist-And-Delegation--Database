@@ -1909,7 +1909,7 @@ function AccountDataPage() {
                 </div>
               </div>
               {/* History Table */}
-              <div className="h-[calc(100vh-300px)] overflow-auto">
+              <div className="overflow-x-auto sticky top-0 max-h-[calc(100vh-300px)] overflow-y-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr>
@@ -2328,7 +2328,7 @@ function AccountDataPage() {
           ) : (
             <>
               {/* Desktop Table View */}
-              <div className=" h-[calc(100vh-250px)] overflow-auto">
+              <div className="overflow-x-auto sticky top-0 max-h-[calc(100vh-250px)] overflow-y-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50 sticky top-0 z-40">
                     <tr>
