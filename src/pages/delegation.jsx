@@ -1124,14 +1124,6 @@ function DelegationDataPage() {
       return;
     }
 
-    const missingReason = selectedItemsArray.filter(
-      (id) => statusData[id] === "Extend date" && (!remarksData[id] || remarksData[id].trim() === "")
-    );
-    if (missingReason.length > 0) {
-      alert("Please provide a reason for all items marked as 'Extend date'");
-      return;
-    }
-
     setIsSubmitting(true);
 
     try {
