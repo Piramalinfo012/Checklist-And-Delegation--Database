@@ -1269,7 +1269,20 @@ function DelegationDataPage() {
       }
 
       if (rowsToInsert.length > 0) {
-        const { error: insertErr } = await supabase.from('DELEGATION DONE').insert(rowsToInsert);
+        const { data: topRow } = await supabase
+          .from('DELEGATION DONE')
+          .select('id')
+          .order('id', { ascending: false })
+          .limit(1);
+
+        const startId = (topRow && topRow[0] && typeof topRow[0].id === 'number' ? topRow[0].id : 0);
+
+        const preparedRows = rowsToInsert.map((row, idx) => ({
+          id: startId + idx + 1,
+          ...row
+        }));
+
+        const { error: insertErr } = await supabase.from('DELEGATION DONE').insert(preparedRows);
         if (insertErr) throw insertErr;
       }
 
