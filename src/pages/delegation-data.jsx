@@ -1,7 +1,7 @@
 "use client"
 import { useCallback, useEffect, useState, useMemo } from "react";
 import { format } from 'date-fns';
-import { Search, ChevronDown, Filter } from "lucide-react";
+import { Search, ChevronDown, Filter, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 
 export default function DelegationPage({
     searchTerm,
@@ -16,6 +16,8 @@ export default function DelegationPage({
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(10);
     const [dropdownOpen, setDropdownOpen] = useState({
         name: false,
         frequency: false
@@ -164,6 +166,37 @@ export default function DelegationPage({
         return { allNames: names, allFrequencies: freqs, filteredTasks: filtered };
     }, [delegationTasks, nameFilter, freqFilter, searchTerm, sortConfig]);
 
+    // Pagination reset
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, nameFilter, freqFilter, itemsPerPage]);
+
+    const totalDelegationItems = filteredTasks.length;
+    const totalDelegationPages = Math.ceil(totalDelegationItems / itemsPerPage) || 1;
+    const validDelegationCurrentPage = Math.min(Math.max(1, currentPage), totalDelegationPages);
+    const delegationStartIndex = (validDelegationCurrentPage - 1) * itemsPerPage;
+    const delegationEndIndex = Math.min(delegationStartIndex + itemsPerPage, totalDelegationItems);
+    const paginatedDelegationTasks = useMemo(() => {
+        return filteredTasks.slice(delegationStartIndex, delegationStartIndex + itemsPerPage);
+    }, [filteredTasks, delegationStartIndex, itemsPerPage]);
+
+    const getPageNumbers = (current, total) => {
+        const pages = [];
+        const maxVisible = 5;
+        if (total <= maxVisible) {
+            for (let i = 1; i <= total; i++) pages.push(i);
+        } else {
+            if (current <= 3) {
+                pages.push(1, 2, 3, 4, '...', total);
+            } else if (current >= total - 2) {
+                pages.push(1, '...', total - 3, total - 2, total - 1, total);
+            } else {
+                pages.push(1, '...', current - 1, current, current + 1, '...', total);
+            }
+        }
+        return pages;
+    };
+
     // Table columns config
     const columns = useMemo(() => [
         { key: 'Timestamp', label: 'Timestamp' },
@@ -262,7 +295,7 @@ export default function DelegationPage({
                                 </td>
                             </tr>
                         ) : filteredTasks.length > 0 ? (
-                            filteredTasks.map((task) => (
+                            paginatedDelegationTasks.map((task) => (
                                 <tr key={task._id} className="hover:bg-gray-50">
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         {task.Timestamp || "—"}
@@ -316,6 +349,91 @@ export default function DelegationPage({
                     </tbody>
                 </table>
             </div>
+
+            {/* Pagination Controls */}
+            {!loading && filteredTasks.length > 0 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-gray-50 border-t border-purple-100 text-sm">
+                    <div className="flex flex-wrap items-center gap-3 text-gray-600">
+                        <span>
+                            Showing <strong className="font-semibold text-gray-800">{totalDelegationItems > 0 ? delegationStartIndex + 1 : 0}</strong> to{" "}
+                            <strong className="font-semibold text-gray-800">{delegationEndIndex}</strong> of{" "}
+                            <strong className="font-semibold text-gray-800">{totalDelegationItems}</strong> tasks
+                        </span>
+                        <div className="flex items-center gap-1.5 ml-2">
+                            <span className="text-gray-500 text-xs">Rows per page:</span>
+                            <select
+                                value={itemsPerPage}
+                                onChange={(e) => {
+                                    setItemsPerPage(Number(e.target.value));
+                                    setCurrentPage(1);
+                                }}
+                                className="bg-white border border-gray-300 rounded px-2 py-1 text-xs text-gray-700 font-medium focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
+                            >
+                                <option value={10}>10</option>
+                                <option value={25}>25</option>
+                                <option value={50}>50</option>
+                                <option value={100}>100</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => setCurrentPage(1)}
+                            disabled={validDelegationCurrentPage === 1}
+                            title="First Page"
+                            className="p-1.5 rounded border border-gray-200 bg-white text-gray-600 hover:bg-purple-50 hover:text-purple-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:text-gray-600 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <ChevronsLeft size={16} />
+                        </button>
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                            disabled={validDelegationCurrentPage === 1}
+                            title="Previous Page"
+                            className="p-1.5 rounded border border-gray-200 bg-white text-gray-600 hover:bg-purple-50 hover:text-purple-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:text-gray-600 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <ChevronLeft size={16} />
+                        </button>
+
+                        <div className="flex items-center gap-1 mx-1">
+                            {getPageNumbers(validDelegationCurrentPage, totalDelegationPages).map((page, index) => (
+                                page === '...' ? (
+                                    <span key={`dots-${index}`} className="px-2 py-1 text-gray-400 text-xs select-none">...</span>
+                                ) : (
+                                    <button
+                                        key={`page-${page}`}
+                                        onClick={() => setCurrentPage(page)}
+                                        className={`min-w-[32px] h-8 px-2 text-xs font-medium rounded transition-colors ${
+                                            validDelegationCurrentPage === page
+                                                ? "bg-purple-600 text-white shadow-sm"
+                                                : "bg-white border border-gray-200 text-gray-700 hover:bg-purple-50 hover:text-purple-700"
+                                        }`}
+                                    >
+                                        {page}
+                                    </button>
+                                )
+                            ))}
+                        </div>
+
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalDelegationPages))}
+                            disabled={validDelegationCurrentPage === totalDelegationPages}
+                            title="Next Page"
+                            className="p-1.5 rounded border border-gray-200 bg-white text-gray-600 hover:bg-purple-50 hover:text-purple-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:text-gray-600 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <ChevronRight size={16} />
+                        </button>
+                        <button
+                            onClick={() => setCurrentPage(totalDelegationPages)}
+                            disabled={validDelegationCurrentPage === totalDelegationPages}
+                            title="Last Page"
+                            className="p-1.5 rounded border border-gray-200 bg-white text-gray-600 hover:bg-purple-50 hover:text-purple-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:text-gray-600 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <ChevronsRight size={16} />
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
