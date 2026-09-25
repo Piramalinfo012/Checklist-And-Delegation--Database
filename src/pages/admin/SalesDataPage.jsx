@@ -782,11 +782,8 @@ function AccountDataPage() {
         const matchesMember = selectedMembers.length > 0 ? selectedMembers.includes(item["col4"]) : true
 
         let matchesStatus = true;
-        if (selectedStatus) {
+        if (selectedStatus && !showHistory) {
           if (selectedStatus === "Leave") {
-            // Check if the item is a Leave item (marked by our isLeaveStatus helper or logic in fetchSheetData)
-            // We need to ensure logic in fetch set it correctly.
-            // In fetchSheetData, we set col16.
             matchesStatus = isLeaveStatus(item["col16"]);
           } else {
             const submissionStatus = getSubmissionStatus(item["col10"], item["col11"], item["col16"]);
@@ -1100,6 +1097,100 @@ function AccountDataPage() {
       hasLoadedOnceRef.current = true
       // Removed localStorage caching to guarantee 100% real-time data & avoid cross-user leakage
       if (!isBackground) setLoading(false)
+
+      // Background multi-stage parallel loader to fetch complete history across ALL dates
+      const fetchFullHistoricalData = async () => {
+        try {
+          let countQuery = supabase.from('Checklist').select('*', { count: 'exact', head: true });
+          if (currentUserRole !== "admin" && currentUsername) {
+            countQuery = countQuery.ilike('Name', currentUsername.trim());
+          }
+          const { count, error: cErr } = await countQuery;
+          if (cErr || !count || count <= 2500) return;
+
+          const total = count;
+          const PAGE_SIZE = 1000;
+          const totalPages = Math.ceil(total / PAGE_SIZE);
+          const CONCURRENT_BATCH = 10;
+          const allHistory = [...historyRows];
+          const seenIds = new Set(historyRows.map(h => String(h._taskId || h._id)));
+
+          for (let i = 2; i < totalPages; i += CONCURRENT_BATCH) {
+            const pagePromises = [];
+            for (let j = i; j < Math.min(i + CONCURRENT_BATCH, totalPages); j++) {
+              const from = j * PAGE_SIZE;
+              const to = Math.min((j + 1) * PAGE_SIZE - 1, total - 1);
+              let pQuery = supabase
+                .from('Checklist')
+                .select('*')
+                .order('Task ID', { ascending: false })
+                .range(from, to);
+              if (currentUserRole !== "admin" && currentUsername) {
+                pQuery = pQuery.ilike('Name', currentUsername.trim());
+              }
+              pagePromises.push(pQuery);
+            }
+            const results = await Promise.all(pagePromises);
+            for (const res of results) {
+              if (res.data) {
+                res.data.forEach((r) => {
+                  const assignedTo = r['Name'] || "Unassigned";
+                  const isUserHistoryMatch = currentUserRole === "admin" || assignedTo.toLowerCase() === currentUsername.toLowerCase();
+                  if (!isUserHistoryMatch) return;
+
+                  const columnGValue = r['Task Start Date'];
+                  const columnKValue = r['Actual'];
+                  const columnPValue = r['Admin Done'];
+                  const columnQValue = r['Leave'];
+
+                  const hasColumnG = !isEmpty(columnGValue);
+                  const hasColumnK = !isEmpty(columnKValue);
+                  const isAdminDone = !isEmpty(columnPValue) && columnPValue.toString().trim() === "Admin Done";
+                  const isLeave = isLeaveStatus(columnQValue);
+
+                  const isCompleted = hasColumnK || isAdminDone || isLeave;
+                  const taskId = r['Task ID'] || "";
+                  const key = String(taskId || `idx_${allHistory.length}`);
+
+                  if (hasColumnG && isCompleted && !seenIds.has(key)) {
+                    seenIds.add(key);
+                    const rowData = {
+                      _id: taskId ? `task_${taskId}_${allHistory.length}` : `row_${allHistory.length}_${Math.random().toString(36).substring(2, 9)}`,
+                      _rowIndex: allHistory.length + 1,
+                      _taskId: taskId,
+                      col0: r['Timestamp'] || '',
+                      col1: r['Task ID'] || '',
+                      col2: r['Department'] || r['Firm'] || '',
+                      col3: r['Given By'] || '',
+                      col4: r['Name'] || '',
+                      col5: r['Tast Descriptions'] || r['Task Description'] || '',
+                      col6: parseGoogleSheetsDateTime(String(r['Task Start Date'] || '')),
+                      col7: r['Freq'] || '',
+                      col8: r['Enable Reminders'] || '',
+                      col9: r['Require Attachment'] || '',
+                      col10: r['Actual'] ? parseGoogleSheetsDateTime(String(r['Actual'])) : '',
+                      col11: r['Delay'] || '',
+                      col12: r['Status'] || '',
+                      col13: r['Remarks'] || '',
+                      col14: r['Uploaded Image'] || '',
+                      col15: r['Admin Done'] || '',
+                      col16: r['Leave'] || '',
+                    };
+                    allHistory.push(rowData);
+                  }
+                });
+              }
+            }
+          }
+          if (allHistory.length > historyRows.length) {
+            setHistoryData(allHistory);
+          }
+        } catch (hErr) {
+          console.warn('Background full history fetch:', hErr);
+        }
+      };
+
+      fetchFullHistoricalData();
     } catch (error) {
       console.error("Error fetching sheet data:", error)
       if (!isBackground || !hasLoadedOnceRef.current) {
@@ -1392,31 +1483,23 @@ function AccountDataPage() {
     return (
       <div className="p-4 border-b border-purple-100 bg-gray-50">
         <div className="flex flex-wrap items-center justify-center gap-4">
-          {/* Status Filter */}
-          <div className="flex flex-col">
-            <label className="text-sm font-medium text-purple-700 mb-1">
-              Filter by Status:
-            </label>
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              className="bg-white border-2 border-purple-300 rounded-xl px-4 py-2 text-sm min-w-[140px] focus:outline-none focus:ring-2 focus:ring-purple-400 shadow-[0_4px_10px_rgba(168,85,247,0.2)] transition-all cursor-pointer"
-            >
-              {showHistory ? (
-                <>
-                  <option value="On time">On time</option>
-                  <option value="Late Submitted">Late Submitted</option>
-                  <option value="Leave">Leave</option>
-                </>
-              ) : (
-                <>
-                  <option value="">All Status</option>
-                  <option value="Pending">Pending (Today Only)</option>
-                  <option value="Disabled">Overdue</option>
-                </>
-              )}
-            </select>
-          </div>
+          {/* Status Filter (Only on Active Tasks page) */}
+          {!showHistory && (
+            <div className="flex flex-col">
+              <label className="text-sm font-medium text-purple-700 mb-1">
+                Filter by Status:
+              </label>
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="bg-white border-2 border-purple-300 rounded-xl px-4 py-2 text-sm min-w-[140px] focus:outline-none focus:ring-2 focus:ring-purple-400 shadow-[0_4px_10px_rgba(168,85,247,0.2)] transition-all cursor-pointer"
+              >
+                <option value="">All Status</option>
+                <option value="Pending">Pending (Today Only)</option>
+                <option value="Disabled">Overdue</option>
+              </select>
+            </div>
+          )}
 
           {/* Name/Member Filter with Search Dropdown */}
           {getFilteredMembersList().length > 0 && (

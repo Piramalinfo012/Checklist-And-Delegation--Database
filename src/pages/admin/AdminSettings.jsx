@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Settings, Zap, Play, CheckCircle2, AlertCircle, Clock, Calendar, 
   RefreshCw, Sliders, Search, Filter, ShieldCheck, Layers, ListChecks,
@@ -1996,6 +1996,45 @@ export default function AdminSettings() {
     });
   }, [templates, searchTerm, assigneeFilter, freqFilter, statusFilter, selectedDate, todayObj, taskIdSortOrder]);
 
+  // Synchronized Top Horizontal Scrollbar for Recurring Templates Table
+  const topScrollRef = useRef(null);
+  const tableScrollRef = useRef(null);
+  const isSyncingScroll = useRef(false);
+  const [tableScrollWidth, setTableScrollWidth] = useState(1200);
+
+  const handleTopScroll = () => {
+    if (isSyncingScroll.current) return;
+    if (topScrollRef.current && tableScrollRef.current) {
+      isSyncingScroll.current = true;
+      tableScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+      requestAnimationFrame(() => { isSyncingScroll.current = false; });
+    }
+  };
+
+  const handleTableScroll = () => {
+    if (isSyncingScroll.current) return;
+    if (topScrollRef.current && tableScrollRef.current) {
+      isSyncingScroll.current = true;
+      topScrollRef.current.scrollLeft = tableScrollRef.current.scrollLeft;
+      requestAnimationFrame(() => { isSyncingScroll.current = false; });
+    }
+  };
+
+  useEffect(() => {
+    const updateScrollWidth = () => {
+      if (tableScrollRef.current) {
+        setTableScrollWidth(tableScrollRef.current.scrollWidth);
+      }
+    };
+    updateScrollWidth();
+    const timer = setTimeout(updateScrollWidth, 150);
+    window.addEventListener('resize', updateScrollWidth);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', updateScrollWidth);
+    };
+  }, [filteredTemplates]);
+
   return (
     <AdminLayout>
       <div className="min-h-screen p-4 md:p-8 space-y-8 bg-slate-50/50">
@@ -3365,98 +3404,46 @@ export default function AdminSettings() {
         {/* ========================================================================= */}
         {/* BOTTOM SECTION: RECURRING CHECKLIST TEMPLATES INSPECTOR                    */}
         {/* ========================================================================= */}
-        <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-4 sm:p-5 md:p-6 shadow-sm space-y-5">
-          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-            <div>
-              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <ListChecks className="h-5 w-5 text-indigo-600" />
-                <span>Recurring Checklist Templates Inspector</span>
-              </h2>
-              <p className="text-xs text-slate-500">
-                Inspect all recurring task definitions from 'Unique' table and their current generation status
-              </p>
+        <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-4 sm:p-5 md:p-6 shadow-sm space-y-4">
+          {/* Tier 1: Header (Title & Subtitle on Left, Action Buttons on Right) */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-indigo-50 text-indigo-600 shadow-2xs shrink-0">
+                <ListChecks className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-base sm:text-lg font-extrabold text-slate-800">
+                    Recurring Checklist Templates Inspector
+                  </h2>
+                  <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 font-extrabold text-[11px]">
+                    {templates.length} Templates
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Inspect all recurring task definitions from 'Unique' table and their current generation status
+                </p>
+              </div>
             </div>
 
-            {/* Filters & Sorting */}
-            <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
-              <div className="relative flex-1 sm:w-56">
-                <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search template / assignee / ID..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 font-medium"
-                />
-              </div>
-
-              {/* Task ID Sort Order */}
-              <select
-                value={taskIdSortOrder}
-                onChange={(e) => setTaskIdSortOrder(e.target.value)}
-                className="px-2.5 py-1.5 bg-indigo-50/70 border border-indigo-200 rounded-xl text-xs font-bold text-indigo-700 focus:outline-none cursor-pointer"
-                title="Sort by Task ID"
-              >
-                <option value="ASC">🔢 ID: 1 → 999 (Ascending)</option>
-                <option value="DESC">🔢 ID: 999 → 1 (Descending)</option>
-              </select>
-
-              {/* Assignee / Person Name Dropdown Filter */}
-              <select
-                value={assigneeFilter}
-                onChange={(e) => setAssigneeFilter(e.target.value)}
-                className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer max-w-[170px] truncate"
-                title="Filter by Assignee / Person Name"
-              >
-                <option value="ALL">👤 All Assignees ({uniqueAssignees.length})</option>
-                {uniqueAssignees.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={freqFilter}
-                onChange={(e) => setFreqFilter(e.target.value)}
-                className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
-              >
-                <option value="ALL">All Frequencies</option>
-                <option value="DAILY">Daily</option>
-                <option value="WEEKLY">Weekly</option>
-                <option value="FORTNIGHTLY">Fortnightly</option>
-                <option value="MONTHLY">Monthly</option>
-                <option value="QUARTERLY">Quarterly</option>
-                <option value="HALF-YEARLY">Half-Yearly</option>
-                <option value="YEARLY">Yearly</option>
-              </select>
-
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
-              >
-                <option value="ALL">All Statuses</option>
-                <option value="DUE">⚡ Due Today</option>
-                <option value="UP_TO_DATE">✅ Up to Date</option>
-              </select>
-
+            {/* Action Buttons: Sync Dates & Refresh Data */}
+            <div className="flex items-center gap-2.5 shrink-0 self-stretch sm:self-auto">
               <button
                 type="button"
                 onClick={handleSyncAllLastDates}
                 disabled={isSyncingDates || loading}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95 whitespace-nowrap"
                 title="Sync Last Date of all templates that already exist in Checklist for selected date"
               >
                 <Zap className={`h-3.5 w-3.5 ${isSyncingDates ? 'animate-spin text-emerald-600' : 'text-emerald-600'}`} />
-                <span>{isSyncingDates ? 'Syncing Dates...' : '⚡ Sync Dates'}</span>
+                <span>{isSyncingDates ? 'Syncing...' : '⚡ Sync Dates'}</span>
               </button>
 
               <button
                 type="button"
                 onClick={loadData}
                 disabled={loading}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95 whitespace-nowrap"
                 title="Refresh Templates live from Supabase"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-indigo-600' : 'text-indigo-600'}`} />
@@ -3465,9 +3452,102 @@ export default function AdminSettings() {
             </div>
           </div>
 
+          {/* Tier 2: Dedicated Filter & Search Bar */}
+          <div className="p-3 bg-slate-50/90 rounded-2xl border border-slate-200/80 shadow-2xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-12 gap-2.5 items-center">
+              {/* Search: spans 4 cols on large screens */}
+              <div className="relative sm:col-span-2 md:col-span-3 xl:col-span-4">
+                <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search template / assignee / ID..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-8 pr-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 font-medium shadow-2xs"
+                />
+              </div>
+
+              {/* Task ID Sort Order: spans 2 cols */}
+              <div className="xl:col-span-2">
+                <select
+                  value={taskIdSortOrder}
+                  onChange={(e) => setTaskIdSortOrder(e.target.value)}
+                  className="w-full px-2.5 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-bold text-indigo-700 focus:outline-none cursor-pointer shadow-2xs"
+                  title="Sort by Task ID"
+                >
+                  <option value="ASC">🔢 ID: 1 → 999 (Asc)</option>
+                  <option value="DESC">🔢 ID: 999 → 1 (Desc)</option>
+                </select>
+              </div>
+
+              {/* Assignee Filter: spans 2 cols */}
+              <div className="xl:col-span-2">
+                <select
+                  value={assigneeFilter}
+                  onChange={(e) => setAssigneeFilter(e.target.value)}
+                  className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer truncate shadow-2xs"
+                  title="Filter by Assignee / Person Name"
+                >
+                  <option value="ALL">👤 All Assignees ({uniqueAssignees.length})</option>
+                  {uniqueAssignees.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Frequency Filter: spans 2 cols */}
+              <div className="xl:col-span-2">
+                <select
+                  value={freqFilter}
+                  onChange={(e) => setFreqFilter(e.target.value)}
+                  className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer shadow-2xs"
+                >
+                  <option value="ALL">All Frequencies</option>
+                  <option value="DAILY">Daily</option>
+                  <option value="WEEKLY">Weekly</option>
+                  <option value="FORTNIGHTLY">Fortnightly</option>
+                  <option value="MONTHLY">Monthly</option>
+                  <option value="QUARTERLY">Quarterly</option>
+                  <option value="HALF-YEARLY">Half-Yearly</option>
+                  <option value="YEARLY">Yearly</option>
+                </select>
+              </div>
+
+              {/* Status Filter: spans 2 cols */}
+              <div className="xl:col-span-2">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer shadow-2xs"
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="DUE">⚡ Due Today</option>
+                  <option value="UP_TO_DATE">✅ Up to Date</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Top Horizontal Scrollbar */}
+          <div
+            ref={topScrollRef}
+            onScroll={handleTopScroll}
+            className="overflow-x-auto overflow-y-hidden border border-indigo-200/70 rounded-xl bg-slate-50/80 p-0.5 shadow-inner"
+            style={{ height: '14px' }}
+            title="Scroll horizontally across table columns"
+          >
+            <div style={{ width: `${Math.max(tableScrollWidth, 1000)}px`, height: '1px' }} />
+          </div>
+
           {/* Table */}
-          <div className="overflow-x-auto rounded-2xl border border-slate-200">
-            <table className="w-full text-left text-xs text-slate-600">
+          <div 
+            ref={tableScrollRef}
+            onScroll={handleTableScroll}
+            className="overflow-x-auto rounded-2xl border border-slate-200"
+          >
+            <table className="w-full text-left text-xs text-slate-600 min-w-[950px]">
               <thead className="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200 select-none">
                 <tr>
                   <th 
