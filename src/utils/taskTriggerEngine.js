@@ -512,13 +512,14 @@ export async function runTaskGenerationTrigger(options = {}) {
       const taskKey = makeTaskKey(name, taskDesc, todayDDMMYYYY);
 
       // Single template run requested manually
-      const isSingleManualRun = specificTemplateId && (String(template['Task ID']) === String(specificTemplateId) || forceRunSpecific);
+      const isTargetTemplate = specificTemplateId ? String(template['Task ID']) === String(specificTemplateId) : true;
+      if (!isTargetTemplate) continue;
 
       // Check duplicate
       const alreadyExistsInChecklist = existingTaskKeys.has(taskKey) || seenInThisRun.has(taskKey);
 
-      if (alreadyExistsInChecklist && !isSingleManualRun) {
-        // If task is already in Checklist for today, make sure template's Last Date is synced to today
+      if (alreadyExistsInChecklist) {
+        addLog(`Template #${template['Task ID']} (${name}) already exists in Checklist for ${todayDDMMYYYY}. Skipped.`, 'warning');
         templateUpdates.push({
           id: template['Task ID'],
           dbId: template.id,
@@ -527,7 +528,7 @@ export async function runTaskGenerationTrigger(options = {}) {
         continue;
       }
 
-      if (evalResult.isDue || isSingleManualRun) {
+      if (evalResult.isDue || forceRunSpecific) {
         seenInThisRun.add(taskKey);
         const taskId = nextTaskId++;
 
@@ -565,6 +566,8 @@ export async function runTaskGenerationTrigger(options = {}) {
           freq,
           date: todayDDMMYYYY
         });
+      } else {
+        addLog(`Template #${template['Task ID']} (${name}) skipped: ${evalResult.reason}`, 'warning');
       }
     }
 

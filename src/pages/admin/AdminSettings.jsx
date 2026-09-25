@@ -1074,7 +1074,7 @@ export default function AdminSettings() {
       targetDate: targetDateObj,
       ignoreCalendarCheck: ignoreCalendarCheck,
       specificTemplateId: specificId,
-      forceRunSpecific: !!specificId,
+      forceRunSpecific: false,
       onProgress: (logEntry, allLogs) => {
         setExecutionLogs([...allLogs]);
       }
@@ -1084,9 +1084,9 @@ export default function AdminSettings() {
     setIsRunningTrigger(false);
     setRunningRowId(null);
 
-    // Optimistic immediate update to local state so UI status flips to "Up to Date" instantly
-    if (result.success) {
-      if (specificId) {
+    // If single template was run manually
+    if (specificId) {
+      if (result.success && result.tasksGenerated > 0) {
         setTemplates(prev =>
           prev.map(item =>
             String(item['Task ID'] ?? item.id) === String(specificId)
@@ -1094,16 +1094,21 @@ export default function AdminSettings() {
               : item
           )
         );
-      } else if (result.generatedTasks && result.generatedTasks.length > 0) {
-        const generatedIds = new Set(result.generatedTasks.map(t => String(t.templateId)));
-        setTemplates(prev =>
-          prev.map(item =>
-            generatedIds.has(String(item['Task ID'] ?? item.id))
-              ? { ...item, 'Last Date': targetDateDDMMYYYY }
-              : item
-          )
-        );
+        alert(`✅ Template #${specificId} successfully generate ho gaya (${targetDateDDMMYYYY})!`);
+      } else {
+        const warningLog = result.logs?.find(l => l.type === 'warning');
+        const reasonMsg = warningLog ? warningLog.message : 'Task is not due yet according to its frequency schedule.';
+        alert(`⚠️ Template #${specificId} generate nahi hua:\n\n${reasonMsg}`);
       }
+    } else if (result.success && result.generatedTasks && result.generatedTasks.length > 0) {
+      const generatedIds = new Set(result.generatedTasks.map(t => String(t.templateId)));
+      setTemplates(prev =>
+        prev.map(item =>
+          generatedIds.has(String(item['Task ID'] ?? item.id))
+            ? { ...item, 'Last Date': targetDateDDMMYYYY }
+            : item
+        )
+      );
     }
 
     // Refresh templates data to ensure 100% sync with Supabase
