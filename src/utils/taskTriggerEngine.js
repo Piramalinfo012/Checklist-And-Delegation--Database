@@ -180,6 +180,15 @@ export function isTemplateDue(template, targetDate = new Date()) {
       }
       return { isDue: false, reason: `Weekly task not due yet (${diffDays}/7 days passed)` };
     }
+    case 'fortnightly':
+    case 'fortnight': {
+      const diffTime = target.getTime() - lastDate.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      if (diffDays >= 14) {
+        return { isDue: true, reason: `Fortnightly task due (${diffDays} days since last: ${lastDateStr})` };
+      }
+      return { isDue: false, reason: `Fortnightly task not due yet (${diffDays}/14 days passed)` };
+    }
     case 'monthly': {
       // Check if 1 or more months have elapsed
       const monthsDiff = (target.getFullYear() - lastDate.getFullYear()) * 12 + (target.getMonth() - lastDate.getMonth());
@@ -188,15 +197,76 @@ export function isTemplateDue(template, targetDate = new Date()) {
       }
       return { isDue: false, reason: `Monthly task not due yet` };
     }
-    case 'yearly': {
-      const yearDiff = target.getFullYear() - lastDate.getFullYear();
-      if (yearDiff >= 1) {
-        return { isDue: true, reason: `Yearly task due (${yearDiff} year(s) passed)` };
+    case 'quarterly':
+    case 'quarter': {
+      const monthsDiff = (target.getFullYear() - lastDate.getFullYear()) * 12 + (target.getMonth() - lastDate.getMonth());
+      if (monthsDiff > 3 || (monthsDiff >= 3 && target.getDate() >= lastDate.getDate())) {
+        return { isDue: true, reason: `Quarterly task due (${monthsDiff} month(s) passed)` };
       }
-      return { isDue: false, reason: `Yearly task not due yet` };
+      return { isDue: false, reason: `Quarterly task not due yet (${monthsDiff}/3 months)` };
+    }
+    case 'half-yearly':
+    case 'halfyearly':
+    case 'half yearly':
+    case 'semi-annually': {
+      const monthsDiff = (target.getFullYear() - lastDate.getFullYear()) * 12 + (target.getMonth() - lastDate.getMonth());
+      if (monthsDiff > 6 || (monthsDiff >= 6 && target.getDate() >= lastDate.getDate())) {
+        return { isDue: true, reason: `Half-yearly task due (${monthsDiff} month(s) passed)` };
+      }
+      return { isDue: false, reason: `Half-yearly task not due yet (${monthsDiff}/6 months)` };
+    }
+    case 'yearly': {
+      const monthsDiff = (target.getFullYear() - lastDate.getFullYear()) * 12 + (target.getMonth() - lastDate.getMonth());
+      if (monthsDiff > 12 || (monthsDiff >= 12 && target.getDate() >= lastDate.getDate())) {
+        return { isDue: true, reason: `Yearly task due (${monthsDiff} month(s) passed)` };
+      }
+      return { isDue: false, reason: `Yearly task not due yet (${monthsDiff}/12 months)` };
+    }
+    case 'end-of-1st-week': {
+      const isSameMonth = target.getFullYear() === lastDate.getFullYear() && target.getMonth() === lastDate.getMonth();
+      if (target.getDate() >= 7 && (!isSameMonth || lastDate.getDate() < 7)) {
+        return { isDue: true, reason: 'End of 1st Week due (7th of month)' };
+      }
+      return { isDue: false, reason: 'End of 1st Week not due' };
+    }
+    case 'end-of-2nd-week': {
+      const isSameMonth = target.getFullYear() === lastDate.getFullYear() && target.getMonth() === lastDate.getMonth();
+      if (target.getDate() >= 14 && (!isSameMonth || lastDate.getDate() < 14)) {
+        return { isDue: true, reason: 'End of 2nd Week due (14th of month)' };
+      }
+      return { isDue: false, reason: 'End of 2nd Week not due' };
+    }
+    case 'end-of-3rd-week': {
+      const isSameMonth = target.getFullYear() === lastDate.getFullYear() && target.getMonth() === lastDate.getMonth();
+      if (target.getDate() >= 21 && (!isSameMonth || lastDate.getDate() < 21)) {
+        return { isDue: true, reason: 'End of 3rd Week due (21st of month)' };
+      }
+      return { isDue: false, reason: 'End of 3rd Week not due' };
+    }
+    case 'end-of-4th-week': {
+      const isSameMonth = target.getFullYear() === lastDate.getFullYear() && target.getMonth() === lastDate.getMonth();
+      if (target.getDate() >= 28 && (!isSameMonth || lastDate.getDate() < 28)) {
+        return { isDue: true, reason: 'End of 4th Week due (28th of month)' };
+      }
+      return { isDue: false, reason: 'End of 4th Week not due' };
+    }
+    case 'end-of-last-week': {
+      const lastDayOfMonth = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+      const isSameMonth = target.getFullYear() === lastDate.getFullYear() && target.getMonth() === lastDate.getMonth();
+      if (target.getDate() >= (lastDayOfMonth - 2) && (!isSameMonth || lastDate.getDate() < (lastDayOfMonth - 2))) {
+        return { isDue: true, reason: 'End of Last Week due (Month end)' };
+      }
+      return { isDue: false, reason: 'End of Last Week not due' };
+    }
+    case 'one-time':
+    case 'critical':
+    case 'urgent': {
+      // One-time tasks never repeat once generated
+      return { isDue: false, reason: 'One-time task already generated once' };
     }
     default: {
-      return { isDue: true, reason: `Default frequency '${freq}' evaluated as due` };
+      // Never generate daily for unhandled/custom frequency
+      return { isDue: false, reason: `Frequency '${freq}' is not scheduled for daily generation` };
     }
   }
 }

@@ -1189,6 +1189,9 @@ export default function AdminDashboard() {
         return "bg-orange-500 hover:bg-orange-600 text-white"
       case "quarterly":
         return "bg-amber-500 hover:bg-amber-600 text-white"
+      case "half-yearly":
+      case "halfyearly":
+        return "bg-teal-500 hover:bg-teal-600 text-white"
       case "yearly":
         return "bg-emerald-500 hover:bg-emerald-600 text-white"
       default:

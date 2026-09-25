@@ -230,6 +230,7 @@ export default function AssignTask() {
         { value: "fortnightly", label: "Fortnightly" },
         { value: "monthly", label: "Monthly" },
         { value: "quarterly", label: "Quarterly" },
+        { value: "half-yearly", label: "Half-Yearly" },
         { value: "yearly", label: "Yearly" },
         { value: "end-of-1st-week", label: "End of 1st Week" },
         { value: "end-of-2nd-week", label: "End of 2nd Week" },
@@ -1144,7 +1145,7 @@ export default function AssignTask() {
           Frequency: formData.frequency,
           'Enable Reminder': formData.enableReminders ? 'Yes' : 'No',
           'Require Attatchment': formData.requireAttachment ? 'Yes' : 'No',
-          'Last Date': isStartingToday ? todayStr : null
+          'Last Date': dateStr
         };
 
         const { error: uErr } = await supabase.from('Unique').insert([templateRow]);
