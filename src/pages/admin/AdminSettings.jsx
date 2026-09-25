@@ -8,7 +8,7 @@ import {
   Download, UploadCloud, FileSpreadsheet, Database, ArrowDownToLine, Check,
   FileText, ExternalLink, UserPlus, Users, Key, Lock, Phone, Mail,
   UserCheck, UserX, Trash2, Edit3, Shield, Building2, User, X, Camera, Moon,
-  ArrowUpDown, ArrowUp, ArrowDown, Save
+  ArrowUpDown, ArrowUp, ArrowDown, Save, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import AdminLayout from '../../components/layout/AdminLayout';
 import { supabase } from '../../lib/supabaseClient';
@@ -69,6 +69,355 @@ export const formatHourLabel = (h) => {
   const display = num % 12 === 0 ? 12 : num % 12;
   return `${String(display).padStart(2, '0')}:00 ${ampm} IST`;
 };
+
+// =============================================================================
+// INTERACTIVE CUSTOM DATE PICKER MODAL FOR TEMPLATE LAST DATES
+// =============================================================================
+function TemplateDatePickerModal({ template, isOpen, onClose, onSave, isSaving }) {
+  if (!isOpen || !template) return null;
+
+  const initialDObj = useMemo(() => {
+    return parseDateString(template['Last Date']) || parseDateString(template['Task Start date'] || template['Task Start Date']) || new Date();
+  }, [template]);
+
+  const [selectedDate, setSelectedDate] = useState(() => parseDateString(template['Last Date']));
+  const [viewYear, setViewYear] = useState(() => initialDObj.getFullYear());
+  const [viewMonth, setViewMonth] = useState(() => initialDObj.getMonth());
+  const [manualDateText, setManualDateText] = useState(() => {
+    const d = parseDateString(template['Last Date']);
+    return d ? formatDateToDDMMYYYY(d) : '';
+  });
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 15 }, (_, i) => currentYear - 5 + i);
+
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay(); // 0 = Sun
+
+  const handlePrevMonth = () => {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear(prev => prev - 1);
+    } else {
+      setViewMonth(prev => prev - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear(prev => prev + 1);
+    } else {
+      setViewMonth(prev => prev + 1);
+    }
+  };
+
+  const handleSelectDay = (day) => {
+    const newD = new Date(viewYear, viewMonth, day);
+    setSelectedDate(newD);
+    setManualDateText(formatDateToDDMMYYYY(newD));
+  };
+
+  const handleSetToday = () => {
+    const today = new Date();
+    setSelectedDate(today);
+    setViewYear(today.getFullYear());
+    setViewMonth(today.getMonth());
+    setManualDateText(formatDateToDDMMYYYY(today));
+  };
+
+  const handleSetYesterday = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    setSelectedDate(d);
+    setViewYear(d.getFullYear());
+    setViewMonth(d.getMonth());
+    setManualDateText(formatDateToDDMMYYYY(d));
+  };
+
+  const handleSetOffsetDays = (offsetDays) => {
+    const d = new Date();
+    d.setDate(d.getDate() - offsetDays);
+    setSelectedDate(d);
+    setViewYear(d.getFullYear());
+    setViewMonth(d.getMonth());
+    setManualDateText(formatDateToDDMMYYYY(d));
+  };
+
+  const handleManualTextChange = (e) => {
+    const val = e.target.value;
+    setManualDateText(val);
+    const parsed = parseDateString(val);
+    if (parsed) {
+      setSelectedDate(parsed);
+      setViewYear(parsed.getFullYear());
+      setViewMonth(parsed.getMonth());
+    }
+  };
+
+  const handleSave = () => {
+    const formatted = selectedDate ? formatDateToDDMMYYYY(selectedDate) : null;
+    onSave(template['Task ID'] ?? template.id, formatted);
+  };
+
+  const handleClear = () => {
+    setSelectedDate(null);
+    setManualDateText('');
+    onSave(template['Task ID'] ?? template.id, null);
+  };
+
+  const isDaySelected = (day) => {
+    if (!selectedDate) return false;
+    return (
+      selectedDate.getDate() === day &&
+      selectedDate.getMonth() === viewMonth &&
+      selectedDate.getFullYear() === viewYear
+    );
+  };
+
+  const isToday = (day) => {
+    const today = new Date();
+    return (
+      today.getDate() === day &&
+      today.getMonth() === viewMonth &&
+      today.getFullYear() === viewYear
+    );
+  };
+
+  return (
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div 
+        className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 p-5 md:p-6 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+          <div>
+            <div className="flex items-center gap-2 text-indigo-600 font-extrabold text-sm">
+              <div className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
+                <Calendar className="h-4 w-4" />
+              </div>
+              <span>Set Last Generated Date</span>
+            </div>
+            <p className="text-xs text-slate-800 font-bold mt-1">
+              Template #{template['Task ID'] ?? template.id} &bull; {template.Name || 'Assignee'}
+            </p>
+            <p className="text-[11px] text-slate-500 truncate max-w-[290px]" title={template['Task Description'] || template['Tast Descriptions']}>
+              {template['Task Description'] || template['Tast Descriptions'] || '-'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+            title="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Quick Shortcut Buttons */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handleSetToday}
+            className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+          >
+            ⚡ Today
+          </button>
+          <button
+            type="button"
+            onClick={handleSetYesterday}
+            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer"
+          >
+            Yesterday
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSetOffsetDays(7)}
+            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer"
+          >
+            7 Days Ago
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSetOffsetDays(14)}
+            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer"
+          >
+            14 Days Ago
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSetOffsetDays(30)}
+            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer"
+          >
+            1 Month Ago
+          </button>
+        </div>
+
+        {/* Month & Year Navigation Toolbar */}
+        <div className="flex items-center justify-between gap-2 bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
+          <button
+            type="button"
+            onClick={handlePrevMonth}
+            className="p-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 hover:text-indigo-600 border border-slate-200 transition-all shadow-xs cursor-pointer active:scale-95"
+            title="Previous Month"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+
+          <div className="flex items-center gap-2">
+            <select
+              value={viewMonth}
+              onChange={(e) => setViewMonth(parseInt(e.target.value, 10))}
+              className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+            >
+              {monthNames.map((m, idx) => (
+                <option key={m} value={idx}>{m}</option>
+              ))}
+            </select>
+
+            <select
+              value={viewYear}
+              onChange={(e) => setViewYear(parseInt(e.target.value, 10))}
+              className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+            >
+              {yearOptions.map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleNextMonth}
+            className="p-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 hover:text-indigo-600 border border-slate-200 transition-all shadow-xs cursor-pointer active:scale-95"
+            title="Next Month"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Days Grid */}
+        <div className="space-y-1.5">
+          {/* Weekday headers */}
+          <div className="grid grid-cols-7 text-center text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">
+            <span>Su</span>
+            <span>Mo</span>
+            <span>Tu</span>
+            <span>We</span>
+            <span>Th</span>
+            <span>Fr</span>
+            <span>Sa</span>
+          </div>
+
+          {/* Days */}
+          <div className="grid grid-cols-7 gap-1 text-center">
+            {/* Empty slots for offset */}
+            {Array.from({ length: firstDayOfWeek }).map((_, idx) => (
+              <div key={`empty-${idx}`} className="h-9 w-9" />
+            ))}
+
+            {/* Month days */}
+            {Array.from({ length: daysInMonth }).map((_, idx) => {
+              const day = idx + 1;
+              const selected = isDaySelected(day);
+              const today = isToday(day);
+
+              return (
+                <button
+                  key={`day-${day}`}
+                  type="button"
+                  onClick={() => handleSelectDay(day)}
+                  className={`h-9 w-9 mx-auto rounded-xl flex items-center justify-center text-xs font-bold transition-all cursor-pointer select-none active:scale-90 ${
+                    selected
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-300 font-extrabold scale-105'
+                      : today
+                      ? 'bg-indigo-50 text-indigo-700 border-2 border-indigo-400 font-extrabold hover:bg-indigo-100'
+                      : 'text-slate-700 hover:bg-slate-100 hover:text-indigo-600'
+                  }`}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Selected Date Preview & Manual Input */}
+        <div className="flex items-center justify-between gap-3 p-2.5 bg-slate-50 rounded-2xl border border-slate-200">
+          <div className="flex-1">
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
+              Selected Date (DD/MM/YYYY)
+            </label>
+            <input
+              type="text"
+              value={manualDateText}
+              onChange={handleManualTextChange}
+              placeholder="e.g. 25/09/2026"
+              className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+          </div>
+          <div className="text-right shrink-0">
+            <span className="block text-[10px] text-slate-400 font-medium">Status</span>
+            <span className="text-xs font-extrabold text-indigo-700">
+              {selectedDate ? formatDateToDDMMYYYY(selectedDate) : 'Never (Clear)'}
+            </span>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={handleClear}
+            disabled={isSaving}
+            className="px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-colors border border-transparent hover:border-rose-200 cursor-pointer disabled:opacity-50"
+            title="Set Last Date to null / Never"
+          >
+            Clear (Never)
+          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-md shadow-indigo-600/25 transition-all cursor-pointer disabled:opacity-50 active:scale-95"
+            >
+              {isSaving ? (
+                <>
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="h-3.5 w-3.5" />
+                  <span>Save Date</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function AdminSettings() {
   // Stats & Main State
@@ -221,10 +570,11 @@ export default function AdminSettings() {
 
   // Table Filters & Sorting for Unique Templates
   const [searchTerm, setSearchTerm] = useState('');
+  const [assigneeFilter, setAssigneeFilter] = useState('ALL');
   const [freqFilter, setFreqFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [taskIdSortOrder, setTaskIdSortOrder] = useState('ASC');
-  const [editingLastDateId, setEditingLastDateId] = useState(null);
+  const [editingTemplateForDate, setEditingTemplateForDate] = useState(null);
   const [updatingDateId, setUpdatingDateId] = useState(null);
 
   // Load all initial data from Supabase
@@ -852,8 +1202,7 @@ export default function AdminSettings() {
     return `${d}/${m}/${y}`;
   };
 
-  const handleUpdateLastGeneratedDate = async (taskId, newIsoDate) => {
-    const formattedDate = newIsoDate ? isoToDdmmyyyy(newIsoDate) : null;
+  const handleUpdateLastGeneratedDate = async (taskId, formattedDate) => {
     setUpdatingDateId(taskId);
     try {
       let res = await supabase
@@ -875,7 +1224,7 @@ export default function AdminSettings() {
           String(item['Task ID'] ?? item.id) === String(taskId) ? { ...item, 'Last Date': formattedDate } : item
         )
       );
-      setEditingLastDateId(null);
+      setEditingTemplateForDate(null);
     } catch (err) {
       console.error('Failed to update Last Date:', err);
       alert(`Failed to update Last Generated date: ${err.message || err}`);
@@ -1584,6 +1933,20 @@ export default function AdminSettings() {
     return templates.filter(t => isTemplateDue(t, target).isDue).length;
   }, [templates, selectedDate, todayObj]);
 
+  // Unique list of all Assignees / Person Names from templates and users
+  const uniqueAssignees = useMemo(() => {
+    const names = new Set();
+    templates.forEach(t => {
+      const n = (t.Name || '').trim();
+      if (n) names.add(n);
+    });
+    users.forEach(u => {
+      const un = (u.Username || u['User name'] || '').trim();
+      if (un && !un.startsWith('DELETED_')) names.add(un);
+    });
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [templates, users]);
+
   // Filtered & Sorted Templates (Natural Numeric Ordering by Task ID)
   const filteredTemplates = useMemo(() => {
     const target = selectedDate ? new Date(selectedDate) : todayObj;
@@ -1596,6 +1959,7 @@ export default function AdminSettings() {
       const q = searchTerm.toLowerCase();
 
       const matchesSearch = !q || taskDesc.includes(q) || name.includes(q) || dept.includes(q) || taskIdStr.includes(q);
+      const matchesAssignee = assigneeFilter === 'ALL' || (t.Name || '').trim().toLowerCase() === assigneeFilter.toLowerCase();
       const matchesFreq = freqFilter === 'ALL' || freq === freqFilter.toLowerCase();
       
       const dueInfo = isTemplateDue(t, target);
@@ -1603,7 +1967,7 @@ export default function AdminSettings() {
       if (statusFilter === 'DUE') matchesStatus = dueInfo.isDue;
       if (statusFilter === 'UP_TO_DATE') matchesStatus = !dueInfo.isDue;
 
-      return matchesSearch && matchesFreq && matchesStatus;
+      return matchesSearch && matchesAssignee && matchesFreq && matchesStatus;
     });
 
     // Strictly sort by Task ID numerically (e.g. 1, 2, 44, 59, 237, 379, 382, 434, 632)
@@ -1625,7 +1989,7 @@ export default function AdminSettings() {
         ? String(rawA).localeCompare(String(rawB), undefined, { numeric: true })
         : String(rawB).localeCompare(String(rawA), undefined, { numeric: true });
     });
-  }, [templates, searchTerm, freqFilter, statusFilter, selectedDate, todayObj, taskIdSortOrder]);
+  }, [templates, searchTerm, assigneeFilter, freqFilter, statusFilter, selectedDate, todayObj, taskIdSortOrder]);
 
   return (
     <AdminLayout>
@@ -3032,6 +3396,21 @@ export default function AdminSettings() {
                 <option value="DESC">🔢 ID: 999 → 1 (Descending)</option>
               </select>
 
+              {/* Assignee / Person Name Dropdown Filter */}
+              <select
+                value={assigneeFilter}
+                onChange={(e) => setAssigneeFilter(e.target.value)}
+                className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer max-w-[170px] truncate"
+                title="Filter by Assignee / Person Name"
+              >
+                <option value="ALL">👤 All Assignees ({uniqueAssignees.length})</option>
+                {uniqueAssignees.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+
               <select
                 value={freqFilter}
                 onChange={(e) => setFreqFilter(e.target.value)}
@@ -3040,7 +3419,10 @@ export default function AdminSettings() {
                 <option value="ALL">All Frequencies</option>
                 <option value="DAILY">Daily</option>
                 <option value="WEEKLY">Weekly</option>
+                <option value="FORTNIGHTLY">Fortnightly</option>
                 <option value="MONTHLY">Monthly</option>
+                <option value="QUARTERLY">Quarterly</option>
+                <option value="HALF-YEARLY">Half-Yearly</option>
                 <option value="YEARLY">Yearly</option>
               </select>
 
@@ -3141,50 +3523,20 @@ export default function AdminSettings() {
                             {freq}
                           </span>
                         </td>
-                        {/* Editable Last Generated Date */}
-                        <td className="py-2 px-2.5 font-mono text-slate-700 whitespace-nowrap">
-                          {editingLastDateId === t['Task ID'] ? (
-                            <div className="flex items-center gap-1 animate-in fade-in duration-150">
-                              <input
-                                type="date"
-                                defaultValue={ddmmyyyyToIso(t['Last Date'])}
-                                onChange={(e) => handleUpdateLastGeneratedDate(t['Task ID'], e.target.value)}
-                                disabled={updatingDateId === t['Task ID']}
-                                className="px-1.5 py-0.5 bg-white border border-indigo-400 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm cursor-pointer"
-                                autoFocus
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setEditingLastDateId(null)}
-                                className="p-1 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-200 transition-colors"
-                                title="Cancel"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
-                              {t['Last Date'] && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateLastGeneratedDate(t['Task ID'], '')}
-                                  className="text-[10px] font-bold text-red-500 hover:text-red-700 hover:underline px-1 py-0.5 rounded"
-                                  title="Clear date (Set to Never)"
-                                >
-                                  Clear
-                                </button>
-                              )}
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setEditingLastDateId(t['Task ID'])}
-                              className="group/editdate inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg hover:bg-indigo-50 border border-transparent hover:border-indigo-200 transition-all text-left"
-                              title="Click to edit Last Generated Date"
-                            >
-                              <span className={t['Last Date'] ? "text-slate-800 font-bold" : "text-slate-400 italic font-medium"}>
-                                {t['Last Date'] || 'Never'}
-                              </span>
-                              <Edit3 className="h-3 w-3 text-slate-400 group-hover/editdate:text-indigo-600 transition-colors opacity-40 group-hover/editdate:opacity-100" />
-                            </button>
-                          )}
+                        {/* Editable Last Generated Date Button */}
+                        <td className="py-2 px-2.5 whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => setEditingTemplateForDate(t)}
+                            className="group/editdate inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 transition-all text-left shadow-2xs cursor-pointer active:scale-95"
+                            title="Click to open interactive calendar & set date"
+                          >
+                            <Calendar className="h-3.5 w-3.5 text-indigo-500 group-hover/editdate:scale-110 transition-transform" />
+                            <span className={t['Last Date'] ? "text-slate-800 font-bold text-xs font-mono" : "text-slate-400 italic font-medium text-xs"}>
+                              {t['Last Date'] || 'Never'}
+                            </span>
+                            <Edit3 className="h-3 w-3 text-slate-400 group-hover/editdate:text-indigo-600 transition-colors opacity-40 group-hover/editdate:opacity-100" />
+                          </button>
                         </td>
                         <td className="py-2.5 px-2 text-center whitespace-nowrap">
                           {dueInfo.isDue ? (
@@ -3237,6 +3589,16 @@ export default function AdminSettings() {
             </table>
           </div>
         </div>
+
+        {/* Interactive Custom Date Picker Modal */}
+        <TemplateDatePickerModal
+          key={editingTemplateForDate ? (editingTemplateForDate['Task ID'] ?? editingTemplateForDate.id ?? 'active') : 'none'}
+          template={editingTemplateForDate}
+          isOpen={Boolean(editingTemplateForDate)}
+          onClose={() => setEditingTemplateForDate(null)}
+          onSave={handleUpdateLastGeneratedDate}
+          isSaving={Boolean(updatingDateId)}
+        />
 
       </div>
     </AdminLayout>
