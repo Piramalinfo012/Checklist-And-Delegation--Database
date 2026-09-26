@@ -1016,7 +1016,7 @@ function processChecklistAndGenerateTasks() {
     var sheetRowsToInsert = [];
     var templateUpdates = [];
 
-    // Header in Unique: [Timestamp, Task ID, Department, Given By, Name, Task Description, Start Date, Frequency, Enable Reminders, Require Attachment, ..., Last Date (Col 17)]
+    // Header in Unique: [Timestamp, Task ID, Department, Given By, Name, Task Description, Start Date, Frequency, Enable Reminders, Require Attachment, ..., Last Date (Col K index 10 or Col Q index 16)]
     for (var i = 1; i < checklistData.length; i++) {
       var row = checklistData[i];
       var taskId = row[1] || "";
@@ -1028,9 +1028,17 @@ function processChecklistAndGenerateTasks() {
       var frequency = (row[7] || "daily").toLowerCase().trim();
       var enableReminders = row[8] || "Yes";
       var requireAttachment = row[9] || "No";
-      var lastDateStr = row[16] || ""; // Column Q
+      var lastDateStr = (row[10] && row[10].trim() !== "") ? row[10].trim() : (row[16] ? row[16].trim() : "");
 
       if (!name || !taskDesc) continue;
+
+      // Check future Start Date
+      if (startDate) {
+        var parsedStart = parseDate(startDate);
+        if (parsedStart && today < parsedStart) {
+          continue; // Start date is in the future
+        }
+      }
 
       var shouldGenerate = false;
       if (!lastDateStr || lastDateStr.trim() === '') {
@@ -1039,24 +1047,59 @@ function processChecklistAndGenerateTasks() {
         var lastDate = parseDate(lastDateStr);
         if (!lastDate) {
           shouldGenerate = true;
+        } else if (isSameDate(today, lastDate) || today < lastDate) {
+          shouldGenerate = false;
         } else {
           switch (frequency) {
             case 'daily':
-              if (!isSameDate(today, lastDate)) shouldGenerate = true;
+              shouldGenerate = true;
               break;
+
             case 'weekly':
-              var daysDiff = Math.floor((today - lastDate) / (1000 * 60 * 60 * 24));
+              var daysDiff = Math.floor((today.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
               if (daysDiff >= 7) shouldGenerate = true;
               break;
+
+            case 'fortnightly':
+            case 'fortnight':
+              var daysDiff = Math.floor((today.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+              if (daysDiff >= 14) shouldGenerate = true;
+              break;
+
             case 'monthly':
-              var nextMonthDate = new Date(lastDate.getFullYear(), lastDate.getMonth() + 1, lastDate.getDate());
-              if (isSameDate(today, nextMonthDate) || today >= nextMonthDate) shouldGenerate = true;
+              var monthsDiff = (today.getFullYear() - lastDate.getFullYear()) * 12 + (today.getMonth() - lastDate.getMonth());
+              if (monthsDiff > 1 || (monthsDiff === 1 && today.getDate() >= lastDate.getDate())) {
+                shouldGenerate = true;
+              }
               break;
+
+            case 'quarterly':
+            case 'quarter':
+              var monthsDiff = (today.getFullYear() - lastDate.getFullYear()) * 12 + (today.getMonth() - lastDate.getMonth());
+              if (monthsDiff > 3 || (monthsDiff >= 3 && today.getDate() >= lastDate.getDate())) {
+                shouldGenerate = true;
+              }
+              break;
+
+            case 'half-yearly':
+            case 'halfyearly':
+            case 'half yearly':
+            case 'semi-annually':
+              var monthsDiff = (today.getFullYear() - lastDate.getFullYear()) * 12 + (today.getMonth() - lastDate.getMonth());
+              if (monthsDiff > 6 || (monthsDiff >= 6 && today.getDate() >= lastDate.getDate())) {
+                shouldGenerate = true;
+              }
+              break;
+
             case 'yearly':
-              if (today.getFullYear() !== lastDate.getFullYear()) shouldGenerate = true;
+              var monthsDiff = (today.getFullYear() - lastDate.getFullYear()) * 12 + (today.getMonth() - lastDate.getMonth());
+              if (monthsDiff > 12 || (monthsDiff >= 12 && today.getDate() >= lastDate.getDate())) {
+                shouldGenerate = true;
+              }
               break;
+
             default:
-              if (!isSameDate(today, lastDate)) shouldGenerate = true;
+              shouldGenerate = false;
               break;
           }
         }
@@ -1115,9 +1158,10 @@ function processChecklistAndGenerateTasks() {
       departmentSheet.getRange(lastRow + 1, 1, sheetRowsToInsert.length, sheetRowsToInsert[0].length).setValues(sheetRowsToInsert);
     }
 
-    // 3. Update Last Date in Google Sheet Unique
+    // 3. Update Last Date in Google Sheet Unique (both Col 11 - Column K and Col 17 - Column Q)
     if (templateUpdates.length > 0) {
       templateUpdates.forEach(function(u) {
+        checklistSheet.getRange(u.sheetRow, 11).setValue(u.newLastDate);
         checklistSheet.getRange(u.sheetRow, 17).setValue(u.newLastDate);
       });
     }
