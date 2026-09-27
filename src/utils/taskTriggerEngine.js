@@ -367,6 +367,19 @@ export async function runTaskGenerationTrigger(options = {}) {
     let nonWorkingReason = null;
 
     if (!ignoreCalendarCheck) {
+      // 0. Hard Sunday Check
+      if (targetDateObj.getDay() === 0) {
+        addLog(`Target date ${todayDDMMYYYY} is Sunday (Non-working day). Task generation skipped.`, 'warning');
+        return {
+          success: true,
+          skipped: true,
+          reason: `Target date ${todayDDMMYYYY} is Sunday (Non-working day)`,
+          tasksGenerated: 0,
+          generatedTasks: [],
+          logs
+        };
+      }
+
       addLog(`Checking working day calendar and holiday schedule for ${todayDDMMYYYY}...`);
       
       const d = targetDateObj.getDate();

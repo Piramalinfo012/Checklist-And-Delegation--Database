@@ -747,6 +747,14 @@ function processChecklistAndGenerateTasks() {
     if (checklistData.length < 2) throw new Error("Checklist sheet is empty");
 
     var today = new Date();
+    if (today.getDay() === 0) {
+      return {
+        success: true,
+        message: "Today is Sunday (Non-working day). Tasks skipped.",
+        tasksGenerated: 0,
+        isTodayWorkingDay: false
+      };
+    }
     var todayString = Utilities.formatDate(today, Session.getScriptTimeZone(), "dd/MM/yyyy");
 
     var calendarData = workingCalendarSheet.getDataRange().getDisplayValues();
@@ -973,9 +981,17 @@ function processChecklistAndGenerateTasks() {
     var today = new Date();
     // Indian Standard Time
     var todayString = Utilities.formatDate(today, "Asia/Kolkata", "dd/MM/yyyy");
-    var todayTimestamp = Utilities.formatDate(today, "Asia/Kolkata", "dd/MM/yyyy, HH:mm:ss");
+    // 1. Check Hard Sunday, Working Calendar and Holidays
+    if (today.getDay() === 0) {
+      return {
+        success: true,
+        message: "Today (" + todayString + ") is Sunday (Non-working day). No tasks generated.",
+        tasksGenerated: 0,
+        isTodayWorkingDay: false,
+        todayDate: todayString
+      };
+    }
 
-    // 1. Check Working Calendar and Holidays
     var isWorkingDay = true;
     if (holidaySheet) {
       var holidayData = holidaySheet.getDataRange().getDisplayValues();
