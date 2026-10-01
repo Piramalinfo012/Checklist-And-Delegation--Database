@@ -356,9 +356,22 @@ export default function AssignTask() {
         }
       });
 
+      const userRole = sessionStorage.getItem("role");
+      const username = sessionStorage.getItem("username");
+      const activeDoersList = Array.from(doerSet).sort((a, b) => a.localeCompare(b));
+
       setDepartmentOptions(Array.from(deptSet).sort((a, b) => a.localeCompare(b)));
       setGivenByOptions(Array.from(givenBySet).sort((a, b) => a.localeCompare(b)));
-      setDoerOptions(Array.from(doerSet).sort((a, b) => a.localeCompare(b)));
+
+      if (userRole === "admin") {
+        setDoerOptions(activeDoersList);
+      } else if (username) {
+        const matched = activeDoersList.find(d => d.toLowerCase() === username.toLowerCase()) || username;
+        setDoerOptions([matched]);
+        setFormData(prev => ({ ...prev, doer: matched }));
+      } else {
+        setDoerOptions(activeDoersList);
+      }
 
     } catch (error) {
       console.error("Error fetching master dropdown options from Supabase:", error);
@@ -460,109 +473,6 @@ export default function AssignTask() {
 
   useEffect(() => {
     fetchMasterSheetOptions();
-  }, []);
-
-  useEffect(() => {
-    const fetchDoerOptions = async () => {
-      try {
-        // Get user role from session storage
-        const userRole = sessionStorage.getItem("role");
-        const username = sessionStorage.getItem("username");
-
-
-        // Fetch all doers first
-        const masterSheetName = "master";
-        const response = await fetch(`${APPS_SCRIPT_URL}?action=fetch&sheet=${encodeURIComponent(masterSheetName)}`);
-
-        if (!response.ok)
-          throw new Error(`Failed to fetch master data: ${response.status}`);
-
-        const data = await response.json();
-
-        if (!data.table || !data.table.rows) {
-          console.log("No master data found");
-          return;
-        }
-
-        // Extract doers from column C (index 2)
-        const allDoers = [];
-        data.table.rows.slice(1).forEach((row) => {
-          if (row.c && row.c[2] && row.c[2].v) {
-            const value = row.c[2].v.toString().trim();
-            if (value !== "") allDoers.push(value);
-          }
-        });
-
-        // Filter based on user role
-        let filteredDoers;
-        let selectedDoer = "";
-
-        if (userRole === "admin") {
-          // Admin sees all doers
-          filteredDoers = [...new Set(allDoers)].sort();
-        } else if (userRole === "user" && username) {
-          // For regular users, find their exact name from the sheet (case-insensitive match)
-          const matchedDoer = allDoers.find(
-            (doer) =>
-              doer.toLowerCase().trim() === username.toLowerCase().trim()
-          );
-
-          if (matchedDoer) {
-            // Use the exact name from the sheet
-            filteredDoers = [matchedDoer];
-            selectedDoer = matchedDoer;
-          } else {
-            // If no exact match, try partial match
-            const partialMatch = allDoers.find(
-              (doer) =>
-                doer.toLowerCase().includes(username.toLowerCase()) ||
-                username.toLowerCase().includes(doer.toLowerCase())
-            );
-
-            if (partialMatch) {
-              filteredDoers = [partialMatch];
-              selectedDoer = partialMatch;
-            } else {
-              // Last resort: use the username as is
-              filteredDoers = [username];
-              selectedDoer = username;
-            }
-          }
-        } else {
-          // Default fallback
-          filteredDoers = username ? [username] : ["Default User"];
-          selectedDoer = username || "Default User";
-        }
-
-        setDoerOptions(filteredDoers);
-
-        // Always prefetch for non-admin users
-        if (userRole !== "admin" && selectedDoer) {
-          setFormData((prev) => ({
-            ...prev,
-            doer: selectedDoer,
-          }));
-        }
-      } catch (error) {
-        console.error("Error fetching doer options:", error);
-        // Fallback to current user if fetch fails
-        const userRole = sessionStorage.getItem("role");
-        const username = sessionStorage.getItem("username");
-
-        if (userRole === "admin") {
-          setDoerOptions(["Doer 1", "Doer 2"]);
-        } else {
-          const fallbackName = username || "Default User";
-          setDoerOptions([fallbackName]);
-          setFormData((prev) => ({
-            ...prev,
-            doer: fallbackName,
-          }));
-        }
-      }
-    };
-
-    fetchDoerOptions();
   }, []);
 
   useEffect(() => {
