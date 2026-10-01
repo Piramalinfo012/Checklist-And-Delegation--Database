@@ -306,21 +306,37 @@ export default function AssignTask() {
       const uData = uRes.data || [];
       const dData = dRes.data || [];
 
+      // Helper to check if a user in Whatsapp table is active and not deleted
+      const isUserActive = (r) => {
+        const uName = (r.Username || r['User name'] || '').trim();
+        const role = (r.Role || '').trim().toLowerCase();
+        const status = (r.Status || '').trim().toLowerCase();
+        if (!uName) return false;
+        if (uName.toUpperCase().startsWith('DELETED_') || uName.toUpperCase().startsWith('DEL_')) return false;
+        if (role === 'deleted' || role === 'inactive' || role === 'in active' || role === 'in-active' || role === 'inactiv' || role === 'in activ') return false;
+        if (status === 'deleted' || status === 'inactive' || status === 'in active' || status === 'in-active') return false;
+        return true;
+      };
+
       // 1. Departments
       const deptSet = new Set(['Office', 'Plant', 'Admin']);
-      wData.forEach(r => { if (r.Department && r.Department.trim()) deptSet.add(r.Department.trim()); });
+      wData.forEach(r => { 
+        if (isUserActive(r) && r.Department && r.Department.trim()) deptSet.add(r.Department.trim()); 
+      });
       uData.forEach(r => { if (r.Department && r.Department.trim()) deptSet.add(r.Department.trim()); });
       dData.forEach(r => { if (r.Department && r.Department.trim()) deptSet.add(r.Department.trim()); });
 
-      // 2. Given By
+      // 2. Given By (Active Admin / Manager users or designated Given By from Whatsapp)
       const givenBySet = new Set(['Admin', 'EA', 'Vaibhav Sir', 'Neha Garg', 'Rahul Sir']);
       wData.forEach(r => {
-        const uName = r.Username || r['User name'];
-        const role = (r.Role || '').toLowerCase();
-        if (role === 'admin' || role === 'manager') {
-          if (uName && uName.trim()) givenBySet.add(uName.trim());
+        if (isUserActive(r)) {
+          const uName = (r.Username || r['User name'] || '').trim();
+          const role = (r.Role || '').trim().toLowerCase();
+          if (role === 'admin' || role === 'manager') {
+            if (uName) givenBySet.add(uName);
+          }
+          if (r['Given By'] && r['Given By'].trim()) givenBySet.add(r['Given By'].trim());
         }
-        if (r['Given By'] && r['Given By'].trim()) givenBySet.add(r['Given By'].trim());
       });
       uData.forEach(r => {
         const gb = r['Give By'] || r['Given By'];
@@ -331,20 +347,13 @@ export default function AssignTask() {
         if (gb && gb.trim()) givenBySet.add(gb.trim());
       });
 
-      // 3. Doers (Active users from Whatsapp + Unique + Delegation)
+      // 3. Doers (Strictly ONLY active users from Whatsapp table)
       const doerSet = new Set();
       wData.forEach(r => {
-        const role = (r.Role || '').toLowerCase();
-        if (role !== 'inactive' && role !== 'in active') {
-          const uName = r.Username || r['User name'];
-          if (uName && uName.trim()) doerSet.add(uName.trim());
+        if (isUserActive(r)) {
+          const uName = (r.Username || r['User name'] || '').trim();
+          if (uName) doerSet.add(uName);
         }
-      });
-      uData.forEach(r => {
-        if (r.Name && r.Name.trim()) doerSet.add(r.Name.trim());
-      });
-      dData.forEach(r => {
-        if (r.Name && r.Name.trim()) doerSet.add(r.Name.trim());
       });
 
       setDepartmentOptions(Array.from(deptSet).sort((a, b) => a.localeCompare(b)));

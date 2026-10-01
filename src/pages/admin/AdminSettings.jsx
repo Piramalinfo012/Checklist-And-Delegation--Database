@@ -1938,19 +1938,19 @@ export default function AdminSettings() {
     return templates.filter(t => isTemplateDue(t, target).isDue).length;
   }, [templates, selectedDate, todayObj]);
 
-  // Unique list of all Assignees / Person Names from templates and users
+  // Unique list of all Assignees / Person Names from active users
   const uniqueAssignees = useMemo(() => {
     const names = new Set();
-    templates.forEach(t => {
-      const n = (t.Name || '').trim();
-      if (n) names.add(n);
-    });
     users.forEach(u => {
       const un = (u.Username || u['User name'] || '').trim();
-      if (un && !un.startsWith('DELETED_')) names.add(un);
+      const role = (u.Role || '').trim().toLowerCase();
+      const status = (u.Status || '').trim().toLowerCase();
+      const isDeleted = un.toUpperCase().startsWith('DELETED_') || un.toUpperCase().startsWith('DEL_') || role === 'deleted' || status === 'deleted';
+      const isInactive = role === 'inactive' || role === 'in active' || role === 'in-active' || role === 'inactiv' || role === 'in activ' || status === 'inactive';
+      if (un && !isDeleted && !isInactive) names.add(un);
     });
     return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [templates, users]);
+  }, [users]);
 
   // Filtered & Sorted Templates (Natural Numeric Ordering by Task ID)
   const filteredTemplates = useMemo(() => {
