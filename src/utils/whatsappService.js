@@ -301,7 +301,15 @@ export const sendMaytapiSMS = async ({
     return { success: false, skipped: true, error: 'WhatsApp SMS is disabled in Settings' };
   }
 
-  const { productId, phoneId, token, apiUrl } = config;
+  const rawProductId = config?.productId || '';
+  const rawPhoneId = config?.phoneId || '';
+  const rawToken = config?.token || '';
+  const rawApiUrl = config?.apiUrl || 'https://api.maytapi.com/api';
+
+  const productId = String(rawProductId).trim();
+  const phoneId = String(rawPhoneId).trim();
+  const token = String(rawToken).trim();
+  const apiUrl = String(rawApiUrl).trim();
 
   if (!productId || !phoneId || !token) {
     const err = 'Maytapi credentials missing (Product ID, Phone ID or Token). Please configure in Settings > Whatsapp SMS.';

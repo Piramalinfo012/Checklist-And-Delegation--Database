@@ -143,7 +143,8 @@ export default function WhatsappSmsSettings() {
   };
 
   const handleSendTestSMS = async () => {
-    if (!testNumber) {
+    const cleanNumber = (testNumber || '').trim();
+    if (!cleanNumber) {
       alert('Please enter a valid phone number for testing!');
       return;
     }
@@ -151,24 +152,32 @@ export default function WhatsappSmsSettings() {
     setIsSendingTest(true);
     setTestResult(null);
 
+    const cleanConfig = {
+      ...config,
+      productId: (config.productId || '').trim(),
+      phoneId: (config.phoneId || '').trim(),
+      token: (config.token || '').trim(),
+      apiUrl: (config.apiUrl || 'https://api.maytapi.com/api').trim(),
+    };
+
     const dummyTask = {
       'Task ID': 'TEST-999',
       'Given By': 'System Admin',
-      Name: testRecipientName || 'Test User',
+      Name: (testRecipientName || 'Test User').trim(),
       'Task Description': 'Test automated WhatsApp message from Maytapi Integration',
       'Task Start Date': new Date().toLocaleDateString('en-GB'),
     };
 
-    const previewMsg = generateDelegationMessage(dummyTask, config.template);
+    const previewMsg = generateDelegationMessage(dummyTask, cleanConfig.template);
 
     try {
       const res = await sendMaytapiSMS({
-        toNumber: testNumber,
+        toNumber: cleanNumber,
         message: previewMsg,
         taskId: 'TEST-999',
         recipientName: testRecipientName,
         allocatedBy: 'Admin (Test)',
-        configOverride: config,
+        configOverride: cleanConfig,
       });
 
       setTestResult(res);
@@ -436,7 +445,7 @@ export default function WhatsappSmsSettings() {
                         type="text"
                         placeholder="e.g. 5xxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                         value={config.productId}
-                        onChange={(e) => setConfig(prev => ({ ...prev, productId: e.target.value }))}
+                        onChange={(e) => setConfig(prev => ({ ...prev, productId: e.target.value.trim() }))}
                         className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:bg-white transition-all"
                         required={config.enabled}
                       />
@@ -449,9 +458,9 @@ export default function WhatsappSmsSettings() {
                       </label>
                       <input
                         type="text"
-                        placeholder="e.g. 12345"
+                        placeholder="e.g. 109164"
                         value={config.phoneId}
-                        onChange={(e) => setConfig(prev => ({ ...prev, phoneId: e.target.value }))}
+                        onChange={(e) => setConfig(prev => ({ ...prev, phoneId: e.target.value.trim() }))}
                         className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:bg-white transition-all"
                         required={config.enabled}
                       />
@@ -468,7 +477,7 @@ export default function WhatsappSmsSettings() {
                         type={showToken ? "text" : "password"}
                         placeholder="Enter Maytapi Secret Token..."
                         value={config.token}
-                        onChange={(e) => setConfig(prev => ({ ...prev, token: e.target.value }))}
+                        onChange={(e) => setConfig(prev => ({ ...prev, token: e.target.value.trim() }))}
                         className="w-full px-3.5 py-2.5 pr-10 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:bg-white transition-all"
                         required={config.enabled}
                       />

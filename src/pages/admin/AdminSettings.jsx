@@ -2182,6 +2182,71 @@ export default function AdminSettings() {
               </div>
             </div>
 
+            {/* 2. Overview Stats (Moved to 2nd position) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+              {/* Stat 1: Checklist */}
+              <div className="card-3d-wrapper card-3d-blue">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Checklist Total</span>
+                  <div className="crystal-orb-3d crystal-orb-blue">
+                    <ListChecks className="h-5 w-5" />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <div className="text-2xl number-3d-text text-slate-800">{checklistCount.toLocaleString()}</div>
+                  <p className="text-xs text-slate-500 mt-0.5">Rows in Supabase Checklist</p>
+                </div>
+              </div>
+
+              {/* Stat 2: Delegation */}
+              <div className="card-3d-wrapper card-3d-purple">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Delegation Total</span>
+                  <div className="crystal-orb-3d crystal-orb-purple">
+                    <Layers className="h-5 w-5" />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <div className="text-2xl number-3d-text text-purple-700">{delegationCount.toLocaleString()}</div>
+                  <p className="text-xs text-slate-500 mt-0.5">Rows in Supabase Delegation</p>
+                </div>
+              </div>
+
+              {/* Stat 3: Working Calendar */}
+              <div className={`card-3d-wrapper ${isWorkingDayToday ? 'card-3d-emerald' : 'card-3d-rose'}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Working Calendar</span>
+                  <div className={`crystal-orb-3d ${isWorkingDayToday ? 'crystal-orb-emerald' : 'crystal-orb-rose'}`}>
+                    <Calendar className="h-5 w-5" />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      isWorkingDayToday ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      {isWorkingDayToday ? '🟢 Working Day' : isTodayHoliday ? `🔴 Holiday (${isTodayHoliday.Holiday})` : '🟡 Off Day'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">Today: {todayFormatted}</p>
+                </div>
+              </div>
+
+              {/* Stat 4: Today's Generated */}
+              <div className="card-3d-wrapper card-3d-amber">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Today's Generated</span>
+                  <div className="crystal-orb-3d crystal-orb-amber">
+                    <Zap className="h-5 w-5" />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <div className="text-2xl number-3d-text text-amber-700">{todayGeneratedCount.toLocaleString()}</div>
+                  <p className="text-xs text-slate-500 mt-0.5">Tasks generated today ({todayFormatted})</p>
+                </div>
+              </div>
+            </div>
+
             {/* The 5 Settings Hub Modules Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               
@@ -2360,71 +2425,6 @@ export default function AdminSettings() {
                 </div>
               </div>
 
-            </div>
-
-            {/* Overview Stats Footer */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 pt-2">
-              {/* Stat 1: Checklist */}
-              <div className="card-3d-wrapper card-3d-blue">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Checklist Total</span>
-                  <div className="crystal-orb-3d crystal-orb-blue">
-                    <ListChecks className="h-5 w-5" />
-                  </div>
-                </div>
-                <div className="mt-3">
-                  <div className="text-2xl number-3d-text text-slate-800">{checklistCount.toLocaleString()}</div>
-                  <p className="text-xs text-slate-500 mt-0.5">Rows in Supabase Checklist</p>
-                </div>
-              </div>
-
-              {/* Stat 2: Delegation */}
-              <div className="card-3d-wrapper card-3d-purple">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Delegation Total</span>
-                  <div className="crystal-orb-3d crystal-orb-purple">
-                    <Layers className="h-5 w-5" />
-                  </div>
-                </div>
-                <div className="mt-3">
-                  <div className="text-2xl number-3d-text text-purple-700">{delegationCount.toLocaleString()}</div>
-                  <p className="text-xs text-slate-500 mt-0.5">Rows in Supabase Delegation</p>
-                </div>
-              </div>
-
-              {/* Stat 3: Working Calendar */}
-              <div className={`card-3d-wrapper ${isWorkingDayToday ? 'card-3d-emerald' : 'card-3d-rose'}`}>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Working Calendar</span>
-                  <div className={`crystal-orb-3d ${isWorkingDayToday ? 'crystal-orb-emerald' : 'crystal-orb-rose'}`}>
-                    <Calendar className="h-5 w-5" />
-                  </div>
-                </div>
-                <div className="mt-3">
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                      isWorkingDayToday ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                    }`}>
-                      {isWorkingDayToday ? '🟢 Working Day' : isTodayHoliday ? `🔴 Holiday (${isTodayHoliday.Holiday})` : '🟡 Off Day'}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1">Today: {todayFormatted}</p>
-                </div>
-              </div>
-
-              {/* Stat 4: Today's Generated */}
-              <div className="card-3d-wrapper card-3d-amber">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Today's Generated</span>
-                  <div className="crystal-orb-3d crystal-orb-amber">
-                    <Zap className="h-5 w-5" />
-                  </div>
-                </div>
-                <div className="mt-3">
-                  <div className="text-2xl number-3d-text text-amber-700">{todayGeneratedCount.toLocaleString()}</div>
-                  <p className="text-xs text-slate-500 mt-0.5">Tasks generated today ({todayFormatted})</p>
-                </div>
-              </div>
             </div>
           </div>
         )}
