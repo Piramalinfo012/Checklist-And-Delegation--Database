@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { 
   Settings, Zap, Play, CheckCircle2, AlertCircle, Clock, Calendar, 
   RefreshCw, Sliders, Search, Filter, ShieldCheck, Layers, ListChecks,
@@ -8,7 +9,7 @@ import {
   Download, UploadCloud, FileSpreadsheet, Database, ArrowDownToLine, Check,
   FileText, ExternalLink, UserPlus, Users, Key, Lock, Phone, Mail,
   UserCheck, UserX, Trash2, Edit3, Shield, Building2, User, X, Camera, Moon,
-  ArrowUpDown, ArrowUp, ArrowDown, Save, ChevronLeft, ChevronRight
+  ArrowUpDown, ArrowUp, ArrowDown, Save, ChevronLeft, ChevronRight, MessageSquare
 } from 'lucide-react';
 import AdminLayout from '../../components/layout/AdminLayout';
 import { supabase } from '../../lib/supabaseClient';
@@ -420,6 +421,22 @@ function TemplateDatePickerModal({ template, isOpen, onClose, onSave, isSaving }
 }
 
 export default function AdminSettings() {
+  const location = useLocation();
+
+  // Determine active tab from URL hash
+  const currentTab = useMemo(() => {
+    const rawHash = (location.hash || '').replace('#', '').trim();
+    if (['user-management', 'manual-data-dump', 'trigger-console', 'recurring-templates'].includes(rawHash)) {
+      return rawHash;
+    }
+    return 'home';
+  }, [location.hash]);
+
+  // Instant scroll to top when tab changes to ensure zero-lag snappy switching
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [currentTab]);
+
   // Stats & Main State
   const [loading, setLoading] = useState(true);
   const [isRunningTrigger, setIsRunningTrigger] = useState(false);
@@ -1039,6 +1056,7 @@ export default function AdminSettings() {
 
   // Filtered Users List
   const filteredUsers = useMemo(() => {
+    if (currentTab !== 'user-management' && currentTab !== 'home') return [];
     return users.filter(u => {
       const q = userSearchTerm.toLowerCase();
       const username = (u.Username || '').toLowerCase();
@@ -1054,7 +1072,7 @@ export default function AdminSettings() {
 
       return matchesSearch && matchesRole;
     });
-  }, [users, userSearchTerm, userRoleFilter]);
+  }, [users, userSearchTerm, userRoleFilter, currentTab]);
 
   // Run Task Generation Trigger
   const handleExecuteTrigger = async (specificId = null) => {
@@ -1954,6 +1972,7 @@ export default function AdminSettings() {
 
   // Filtered & Sorted Templates (Natural Numeric Ordering by Task ID)
   const filteredTemplates = useMemo(() => {
+    if (currentTab !== 'recurring-templates') return [];
     const target = selectedDate ? new Date(selectedDate) : todayObj;
     const list = templates.filter(t => {
       const taskDesc = (t['Task Description'] || t['Tast Descriptions'] || '').toLowerCase();
@@ -1994,7 +2013,7 @@ export default function AdminSettings() {
         ? String(rawA).localeCompare(String(rawB), undefined, { numeric: true })
         : String(rawB).localeCompare(String(rawA), undefined, { numeric: true });
     });
-  }, [templates, searchTerm, assigneeFilter, freqFilter, statusFilter, selectedDate, todayObj, taskIdSortOrder]);
+  }, [templates, searchTerm, assigneeFilter, freqFilter, statusFilter, selectedDate, todayObj, taskIdSortOrder, currentTab]);
 
   // Synchronized Top Horizontal Scrollbar for Recurring Templates Table
   const topScrollRef = useRef(null);
@@ -2021,344 +2040,601 @@ export default function AdminSettings() {
   };
 
   useEffect(() => {
+    if (currentTab !== 'recurring-templates') return;
     const updateScrollWidth = () => {
       if (tableScrollRef.current) {
         setTableScrollWidth(tableScrollRef.current.scrollWidth);
       }
     };
     updateScrollWidth();
-    const timer = setTimeout(updateScrollWidth, 150);
+    const timer = setTimeout(updateScrollWidth, 80);
     window.addEventListener('resize', updateScrollWidth);
     return () => {
       clearTimeout(timer);
       window.removeEventListener('resize', updateScrollWidth);
     };
-  }, [filteredTemplates]);
+  }, [currentTab, filteredTemplates]);
 
   return (
     <AdminLayout>
       <div className="min-h-screen p-4 md:p-8 space-y-8 bg-slate-50/50">
         
-        {/* Header Banner */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 md:p-8 text-white shadow-2xl border border-slate-800">
-          <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-            <div className="space-y-2">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 text-xs font-semibold uppercase tracking-wider">
-                <Sparkles className="h-3.5 w-3.5" />
-                Admin Settings & User ID Management
-              </div>
-              <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">
-                ⚙️ User Management, Task Generator & Sheet Dump
-              </h1>
-              <p className="text-slate-300 text-sm md:text-base max-w-2xl">
-                Create & manage new User IDs in the Whatsapp table, configure automated recurring task generators, and manually dump live Supabase data to Google Sheets.
-              </p>
-            </div>
-            
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                onClick={handleOpenCreateUserModal}
-                className="flex items-center gap-2.5 px-5 py-3 rounded-2xl font-bold text-white shadow-lg transition-all duration-300 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 hover:shadow-emerald-500/25 active:scale-95"
+        {/* ========================================================================= */}
+        {/* TOP SUB-NAVIGATION BAR (WHEN VIEWING INDIVIDUAL SUB-SECTIONS)             */}
+        {/* ========================================================================= */}
+        {currentTab !== 'home' && (
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white/90 backdrop-blur-md border border-slate-200 shadow-sm">
+            <Link
+              to="/dashboard/settings"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-extrabold bg-slate-800 hover:bg-slate-900 text-white transition-all shadow-sm active:scale-95 cursor-pointer"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              <span>← Back to Settings Home</span>
+            </Link>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                to="/dashboard/settings#user-management"
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  currentTab === 'user-management'
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/25'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                }`}
               >
-                <UserPlus className="h-5 w-5" />
-                <span>+ Create New User ID</span>
-              </button>
+                <Users className="h-3.5 w-3.5" />
+                <span>User ID Directory</span>
+              </Link>
 
-              <button
-                onClick={() => handleExecuteTrigger()}
-                disabled={isRunningTrigger || loading}
-                className="flex items-center gap-2.5 px-5 py-3 rounded-2xl font-bold text-white shadow-lg transition-all duration-300 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 hover:shadow-indigo-500/25 active:scale-95 disabled:opacity-50"
+              <Link
+                to="/dashboard/settings#manual-data-dump"
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  currentTab === 'manual-data-dump'
+                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/25'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                }`}
               >
-                <Zap className={`h-5 w-5 ${isRunningTrigger ? 'animate-bounce text-amber-300' : 'text-amber-300 fill-amber-300'}`} />
-                <span>{isRunningTrigger ? 'Generating Tasks...' : '⚡ Run Task Generator'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+                <span>Google Sheet Dump</span>
+              </Link>
 
-        {/* Overview Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
-          {/* Card 1: Users Count */}
-          <div className="card-3d-wrapper card-3d-emerald">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Active User IDs</span>
-              <div className="crystal-orb-3d crystal-orb-emerald">
-                <Users className="h-5 w-5" />
-              </div>
-            </div>
-            <div className="mt-3">
-              <div className="text-2xl number-3d-text text-emerald-700">{users.length} Users</div>
-              <p className="text-xs text-slate-500 mt-0.5">Stored in Supabase 'Whatsapp' table</p>
-            </div>
-          </div>
+              <Link
+                to="/dashboard/settings#trigger-console"
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  currentTab === 'trigger-console'
+                    ? 'bg-purple-600 text-white shadow-md shadow-purple-600/25'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                }`}
+              >
+                <Sliders className="h-3.5 w-3.5" />
+                <span>Trigger Console</span>
+              </Link>
 
-          {/* Card 2: Checklist Count */}
-          <div className="card-3d-wrapper card-3d-blue">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Checklist Table</span>
-              <div className="crystal-orb-3d crystal-orb-blue">
-                <ListChecks className="h-5 w-5" />
-              </div>
-            </div>
-            <div className="mt-3">
-              <div className="text-2xl number-3d-text text-slate-800">{checklistCount.toLocaleString()}</div>
-              <p className="text-xs text-slate-500 mt-0.5">Total Checklist rows in Supabase</p>
-            </div>
-          </div>
+              <Link
+                to="/dashboard/settings#recurring-templates"
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  currentTab === 'recurring-templates'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                }`}
+              >
+                <ListChecks className="h-3.5 w-3.5" />
+                <span>Recurring Templates</span>
+              </Link>
 
-          {/* Card 3: Delegation Count */}
-          <div className="card-3d-wrapper card-3d-purple">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Delegation Table</span>
-              <div className="crystal-orb-3d crystal-orb-purple">
-                <Layers className="h-5 w-5" />
-              </div>
-            </div>
-            <div className="mt-3">
-              <div className="text-2xl number-3d-text text-purple-700">{delegationCount.toLocaleString()}</div>
-              <p className="text-xs text-slate-500 mt-0.5">Total Delegation rows in Supabase</p>
+              <Link
+                to="/dashboard/settings/whatsapp-sms"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors border border-emerald-200"
+              >
+                <MessageSquare className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Whatsapp Service</span>
+              </Link>
             </div>
           </div>
+        )}
 
-          {/* Card 4: Working Day Calendar */}
-          <div className={`card-3d-wrapper ${isWorkingDayToday ? 'card-3d-emerald' : 'card-3d-rose'}`}>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Working Calendar</span>
-              <div className={`crystal-orb-3d ${isWorkingDayToday ? 'crystal-orb-emerald' : 'crystal-orb-rose'}`}>
-                <Calendar className="h-5 w-5" />
-              </div>
-            </div>
-            <div className="mt-3">
-              <div className="flex items-center gap-2">
-                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                  isWorkingDayToday ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                }`}>
-                  {isWorkingDayToday ? '🟢 Working Day' : isTodayHoliday ? `🔴 Holiday (${isTodayHoliday.Holiday})` : '🟡 Off Day'}
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-1">Today: {todayFormatted}</p>
-            </div>
-          </div>
+        {/* ========================================================================= */}
+        {/* SETTINGS HOME HUB (RENDERED ONLY ON /dashboard/settings WITH NO SUB-HASH) */}
+        {/* ========================================================================= */}
+        {currentTab === 'home' && (
+          <div className="space-y-8">
+            {/* Header Banner */}
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 md:p-8 text-white shadow-2xl border border-slate-800">
+              <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div className="space-y-2">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 text-xs font-semibold uppercase tracking-wider">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Admin Settings & Control Center
+                  </div>
+                  <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">
+                    ⚙️ Settings & Administration Hub
+                  </h1>
+                  <p className="text-slate-300 text-sm md:text-base max-w-2xl">
+                    Niche diye gaye kisi bhi module par click karke user IDs manage karein, Google Sheet me live data dump karein, task generator trigger run karein, ya WhatsApp SMS settings configure karein.
+                  </p>
+                </div>
+                
+                <div className="flex flex-wrap items-center gap-3">
+                  <Link
+                    to="/dashboard/settings/whatsapp-sms"
+                    className="flex items-center gap-2 px-4 py-3 rounded-2xl font-bold text-white shadow-lg transition-all duration-300 bg-emerald-600/40 hover:bg-emerald-600/60 border border-emerald-500/40 hover:shadow-emerald-500/20 active:scale-95 text-xs"
+                  >
+                    <MessageSquare className="h-4 w-4 text-emerald-300" />
+                    <span>💬 WhatsApp SMS & Logs</span>
+                  </Link>
 
-          {/* Card 5: Today's Generated Tasks */}
-          <div className="card-3d-wrapper card-3d-amber">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Today's Generated</span>
-              <div className="crystal-orb-3d crystal-orb-amber">
-                <Zap className="h-5 w-5" />
+                  <button
+                    onClick={handleOpenCreateUserModal}
+                    className="flex items-center gap-2.5 px-5 py-3 rounded-2xl font-bold text-white shadow-lg transition-all duration-300 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 hover:shadow-emerald-500/25 active:scale-95 text-xs cursor-pointer"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    <span>+ Create New User ID</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleExecuteTrigger()}
+                    disabled={isRunningTrigger || loading}
+                    className="flex items-center gap-2.5 px-5 py-3 rounded-2xl font-bold text-white shadow-lg transition-all duration-300 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 hover:shadow-indigo-500/25 active:scale-95 disabled:opacity-50 text-xs cursor-pointer"
+                  >
+                    <Zap className={`h-4 w-4 ${isRunningTrigger ? 'animate-bounce text-amber-300' : 'text-amber-300 fill-amber-300'}`} />
+                    <span>{isRunningTrigger ? 'Generating Tasks...' : '⚡ Run Task Generator'}</span>
+                  </button>
+                </div>
               </div>
             </div>
-            <div className="mt-3">
-              <div className="text-2xl number-3d-text text-amber-700">{todayGeneratedCount.toLocaleString()}</div>
-              <p className="text-xs text-slate-500 mt-0.5">Tasks generated today ({todayFormatted})</p>
+
+            {/* The 5 Settings Hub Modules Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              
+              {/* 1. User ID Directory & Management */}
+              <div className="bg-white/90 backdrop-blur-xl border-2 border-emerald-100 rounded-3xl p-6 shadow-md hover:shadow-xl transition-all duration-300 flex flex-col justify-between group hover:border-emerald-300">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/20 group-hover:scale-105 transition-transform">
+                      <Users className="h-6 w-6" />
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                      {users.length} Users
+                    </span>
+                  </div>
+
+                  <div>
+                    <h3 className="text-lg font-extrabold text-slate-800 group-hover:text-emerald-700 transition-colors">
+                      User ID Directory & Management
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                      Whatsapp table ke sabhi users ko view karein, naye User ID & password banayein, aur Admin / User roles manage karein.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-5 mt-4 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-400">Whatsapp Table</span>
+                  <Link
+                    to="/dashboard/settings#user-management"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition-all active:scale-95 cursor-pointer"
+                  >
+                    <span>Open User Directory</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+              </div>
+
+              {/* 2. Manual Data Dump to Google Sheet */}
+              <div className="bg-white/90 backdrop-blur-xl border-2 border-indigo-100 rounded-3xl p-6 shadow-md hover:shadow-xl transition-all duration-300 flex flex-col justify-between group hover:border-indigo-300">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white shadow-md shadow-indigo-500/20 group-hover:scale-105 transition-transform">
+                      <FileSpreadsheet className="h-6 w-6" />
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                      Live Google Sheets
+                    </span>
+                  </div>
+
+                  <div>
+                    <h3 className="text-lg font-extrabold text-slate-800 group-hover:text-indigo-700 transition-colors">
+                      Manual Data Dump to Google Sheet
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                      Checklist, Delegation aur Whatsapp users ka poora data single click me live Google Sheet me dump / sync karein.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-5 mt-4 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-400">
+                    {checklistCount.toLocaleString()} Rows
+                  </span>
+                  <Link
+                    to="/dashboard/settings#manual-data-dump"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition-all active:scale-95 cursor-pointer"
+                  >
+                    <span>Open Data Dump</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+              </div>
+
+              {/* 3. Task Generation Trigger Console */}
+              <div className="bg-white/90 backdrop-blur-xl border-2 border-purple-100 rounded-3xl p-6 shadow-md hover:shadow-xl transition-all duration-300 flex flex-col justify-between group hover:border-purple-300">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 text-white shadow-md shadow-purple-500/20 group-hover:scale-105 transition-transform">
+                      <Sliders className="h-6 w-6" />
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                      {formatHourLabel(nightlyTriggerHour)}
+                    </span>
+                  </div>
+
+                  <div>
+                    <h3 className="text-lg font-extrabold text-slate-800 group-hover:text-purple-700 transition-colors">
+                      Task Generation Trigger Console
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                      Automated Cloud Cron schedule manage karein, manual task triggers execute karein aur live trigger execution logs dekhein.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-5 mt-4 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-400">
+                    Today: {todayGeneratedCount.toLocaleString()} Tasks
+                  </span>
+                  <Link
+                    to="/dashboard/settings#trigger-console"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 shadow-md shadow-purple-600/20 transition-all active:scale-95 cursor-pointer"
+                  >
+                    <span>Open Trigger Console</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+              </div>
+
+              {/* 4. Recurring Checklist Templates Inspector */}
+              <div className="bg-white/90 backdrop-blur-xl border-2 border-blue-100 rounded-3xl p-6 shadow-md hover:shadow-xl transition-all duration-300 flex flex-col justify-between group hover:border-blue-300">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-600 text-white shadow-md shadow-blue-500/20 group-hover:scale-105 transition-transform">
+                      <ListChecks className="h-6 w-6" />
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                      {templates.length} Templates
+                    </span>
+                  </div>
+
+                  <div>
+                    <h3 className="text-lg font-extrabold text-slate-800 group-hover:text-blue-700 transition-colors">
+                      Recurring Checklist Templates Inspector
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                      'Unique' table ke recurring task templates dekhein, Last Generated date update karein aur individual task trigger karein.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-5 mt-4 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-400">Unique Table</span>
+                  <Link
+                    to="/dashboard/settings#recurring-templates"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all active:scale-95 cursor-pointer"
+                  >
+                    <span>Inspect Templates</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+              </div>
+
+              {/* 5. Whatsapp Service */}
+              <div className="bg-white/90 backdrop-blur-xl border-2 border-emerald-200 rounded-3xl p-6 shadow-md hover:shadow-xl transition-all duration-300 flex flex-col justify-between group hover:border-emerald-400">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-600 via-teal-600 to-green-600 text-white shadow-md shadow-emerald-600/20 group-hover:scale-105 transition-transform">
+                      <MessageSquare className="h-6 w-6" />
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      Maytapi API
+                    </span>
+                  </div>
+
+                  <div>
+                    <h3 className="text-lg font-extrabold text-slate-800 group-hover:text-emerald-700 transition-colors">
+                      Whatsapp Service
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                      Maytapi WhatsApp credentials configure karein, automated task reminder SMS bhejein aur live message delivery logs monitor karein.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-5 mt-4 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-400">SMS & Logs</span>
+                  <Link
+                    to="/dashboard/settings/whatsapp-sms"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition-all active:scale-95 cursor-pointer"
+                  >
+                    <span>Open Whatsapp Service</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Overview Stats Footer */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 pt-2">
+              {/* Stat 1: Checklist */}
+              <div className="card-3d-wrapper card-3d-blue">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Checklist Total</span>
+                  <div className="crystal-orb-3d crystal-orb-blue">
+                    <ListChecks className="h-5 w-5" />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <div className="text-2xl number-3d-text text-slate-800">{checklistCount.toLocaleString()}</div>
+                  <p className="text-xs text-slate-500 mt-0.5">Rows in Supabase Checklist</p>
+                </div>
+              </div>
+
+              {/* Stat 2: Delegation */}
+              <div className="card-3d-wrapper card-3d-purple">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Delegation Total</span>
+                  <div className="crystal-orb-3d crystal-orb-purple">
+                    <Layers className="h-5 w-5" />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <div className="text-2xl number-3d-text text-purple-700">{delegationCount.toLocaleString()}</div>
+                  <p className="text-xs text-slate-500 mt-0.5">Rows in Supabase Delegation</p>
+                </div>
+              </div>
+
+              {/* Stat 3: Working Calendar */}
+              <div className={`card-3d-wrapper ${isWorkingDayToday ? 'card-3d-emerald' : 'card-3d-rose'}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Working Calendar</span>
+                  <div className={`crystal-orb-3d ${isWorkingDayToday ? 'crystal-orb-emerald' : 'crystal-orb-rose'}`}>
+                    <Calendar className="h-5 w-5" />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      isWorkingDayToday ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      {isWorkingDayToday ? '🟢 Working Day' : isTodayHoliday ? `🔴 Holiday (${isTodayHoliday.Holiday})` : '🟡 Off Day'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">Today: {todayFormatted}</p>
+                </div>
+              </div>
+
+              {/* Stat 4: Today's Generated */}
+              <div className="card-3d-wrapper card-3d-amber">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Today's Generated</span>
+                  <div className="crystal-orb-3d crystal-orb-amber">
+                    <Zap className="h-5 w-5" />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <div className="text-2xl number-3d-text text-amber-700">{todayGeneratedCount.toLocaleString()}</div>
+                  <p className="text-xs text-slate-500 mt-0.5">Tasks generated today ({todayFormatted})</p>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* ========================================================================= */}
         {/* NEW DEDICATED SECTION 1: USER ID MANAGEMENT & CREATION (WHATSAPP TABLE)   */}
         {/* ========================================================================= */}
-        <div className="bg-white/90 backdrop-blur-xl border-2 border-emerald-200/80 rounded-3xl p-6 md:p-8 shadow-md space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 border-b border-slate-100 pb-6">
-            <div className="flex items-center gap-4">
-              <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 text-white shadow-lg shadow-emerald-500/30 ring-4 ring-emerald-50">
-                <Users className="h-7 w-7" />
-              </div>
-              <div>
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <h2 className="text-xl font-extrabold tracking-tight text-slate-800">
-                    User ID Directory &amp; Management
-                  </h2>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-700">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                    Whatsapp Table &middot; {users.length} Users
-                  </span>
+        {currentTab === 'user-management' && (
+          <div id="user-management" className="bg-white/90 backdrop-blur-xl border-2 border-emerald-200/80 rounded-3xl p-6 md:p-8 shadow-md space-y-6 scroll-mt-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 border-b border-slate-100 pb-6">
+              <div className="flex items-center gap-4">
+                <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 text-white shadow-lg shadow-emerald-500/30 ring-4 ring-emerald-50">
+                  <Users className="h-7 w-7" />
                 </div>
-                <p className="mt-1 text-xs text-slate-500">
-                  Naye user IDs create karein, passwords reset karein aur roles (Admin / User) manage karein.
-                </p>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <h2 className="text-xl font-extrabold tracking-tight text-slate-800">
+                      User ID Directory &amp; Management
+                    </h2>
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-700">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                      Whatsapp Table &middot; {users.length} Users
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Naye user IDs create karein, passwords reset karein aur roles (Admin / User) manage karein.
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
+                <button
+                  onClick={() => handleDownloadCSV('Whatsapp')}
+                  className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:shadow-md active:scale-95"
+                  title="Download all users to CSV"
+                >
+                  <Download className="h-3.5 w-3.5 text-slate-500" />
+                  <span>Export CSV</span>
+                </button>
+
+                <button
+                  onClick={handleOpenCreateUserModal}
+                  className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-600/25 transition-all hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-600/30 active:scale-95"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  <span>Create New User ID</span>
+                </button>
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
-              <button
-                onClick={() => handleDownloadCSV('Whatsapp')}
-                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 hover:shadow-md active:scale-95"
-                title="Download all users to CSV"
-              >
-                <Download className="h-3.5 w-3.5 text-slate-500" />
-                <span>Export CSV</span>
-              </button>
+            {/* User Filters */}
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex w-full flex-1 flex-wrap items-center gap-3 md:w-auto">
+                <div className="relative flex-1 md:w-72">
+                  <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search user name, phone, dept..."
+                    value={userSearchTerm}
+                    onChange={(e) => setUserSearchTerm(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs transition-colors focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
 
-              <button
-                onClick={handleOpenCreateUserModal}
-                className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-600/25 transition-all hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-600/30 active:scale-95"
-              >
-                <UserPlus className="h-4 w-4" />
-                <span>Create New User ID</span>
-              </button>
-            </div>
-          </div>
-
-          {/* User Filters */}
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex w-full flex-1 flex-wrap items-center gap-3 md:w-auto">
-              <div className="relative flex-1 md:w-72">
-                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search user name, phone, dept..."
-                  value={userSearchTerm}
-                  onChange={(e) => setUserSearchTerm(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs transition-colors focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                />
+                <select
+                  value={userRoleFilter}
+                  onChange={(e) => setUserRoleFilter(e.target.value)}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-700 transition-colors focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
+                  <option value="ALL">All Roles</option>
+                  <option value="ADMIN">🛡️ Admin Only</option>
+                  <option value="USER">👤 User Only</option>
+                  <option value="INACTIVE">⛔ Inactive Only</option>
+                </select>
               </div>
 
-              <select
-                value={userRoleFilter}
-                onChange={(e) => setUserRoleFilter(e.target.value)}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-700 transition-colors focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-              >
-                <option value="ALL">All Roles</option>
-                <option value="ADMIN">🛡️ Admin Only</option>
-                <option value="USER">👤 User Only</option>
-                <option value="INACTIVE">⛔ Inactive Only</option>
-              </select>
+              <span className="shrink-0 rounded-full bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-500">
+                Showing <span className="text-slate-700">{filteredUsers.length}</span> of {users.length} users
+              </span>
             </div>
 
-            <span className="shrink-0 rounded-full bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-500">
-              Showing <span className="text-slate-700">{filteredUsers.length}</span> of {users.length} users
-            </span>
-          </div>
-
-          {/* Users Table */}
-          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm max-h-96 overflow-y-auto">
-            <table className="w-full text-left text-xs text-slate-600">
-              <thead className="bg-slate-50/90 backdrop-blur sticky top-0 z-10 text-slate-700 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
-                <tr>
-                  <th className="py-3 px-4">User</th>
-                  <th className="py-3 px-4">WhatsApp Mobile Number</th>
-                  <th className="py-3 px-4">Role</th>
-                  <th className="py-3 px-4">Password</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium">
-                {filteredUsers.length === 0 ? (
+            {/* Users Table */}
+            <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm max-h-96 overflow-y-auto">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50/90 backdrop-blur sticky top-0 z-10 text-slate-700 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
                   <tr>
-                    <td colSpan="5" className="py-8 text-center text-slate-400 italic">
-                      No matching users found in Whatsapp table. Click "+ Create New User ID" to add one.
-                    </td>
+                    <th className="py-3 px-4">User</th>
+                    <th className="py-3 px-4">WhatsApp Mobile Number</th>
+                    <th className="py-3 px-4">Role</th>
+                    <th className="py-3 px-4">Password</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
-                ) : (
-                  filteredUsers.map((user, idx) => {
-                    const role = (user.Role || 'user').toLowerCase();
-                    const isInactive = role === 'in active' || role === 'inactive';
-                    const isAdmin = role === 'admin';
-                    const avatarUrl = user.Photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.Username || 'U')}&background=6366f1&color=fff&bold=true`;
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {filteredUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" className="py-8 text-center text-slate-400 italic">
+                        No matching users found in Whatsapp table. Click "+ Create New User ID" to add one.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredUsers.map((user, idx) => {
+                      const role = (user.Role || 'user').toLowerCase();
+                      const isInactive = role === 'in active' || role === 'inactive';
+                      const isAdmin = role === 'admin';
+                      const avatarUrl = user.Photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.Username || 'U')}&background=6366f1&color=fff&bold=true`;
 
-                    return (
-                      <tr key={user.Username || idx} className={`hover:bg-slate-50/80 transition-colors ${isInactive ? 'opacity-60 bg-slate-50/50' : ''}`}>
-                        
-                        {/* User & Avatar */}
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-3">
-                            <img
-                              src={avatarUrl}
-                              alt={user.Username}
-                              className="h-8 w-8 rounded-full object-cover border border-slate-200 shadow-sm"
-                              onError={(e) => {
-                                e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.Username || 'U')}&background=6366f1&color=fff&bold=true`;
-                              }}
-                            />
-                            <div>
-                              <span className="font-bold text-slate-800 block">{user.Username}</span>
-                              {user.Email && <span className="text-[10px] text-slate-400 block">{user.Email}</span>}
+                      return (
+                        <tr key={user.Username || idx} className={`hover:bg-slate-50/80 transition-colors ${isInactive ? 'opacity-60 bg-slate-50/50' : ''}`}>
+                          
+                          {/* User & Avatar */}
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-3">
+                              <img
+                                src={avatarUrl}
+                                alt={user.Username}
+                                className="h-8 w-8 rounded-full object-cover border border-slate-200 shadow-sm"
+                                onError={(e) => {
+                                  e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.Username || 'U')}&background=6366f1&color=fff&bold=true`;
+                                }}
+                              />
+                              <div>
+                                <span className="font-bold text-slate-800 block">{user.Username}</span>
+                                {user.Email && <span className="text-[10px] text-slate-400 block">{user.Email}</span>}
+                              </div>
                             </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        {/* Number */}
-                        <td className="py-3 px-4 font-mono">
-                          {user.Number ? (
-                            <a
-                              href={`https://wa.me/91${user.Number.replace(/\D/g, '')}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 text-emerald-700 hover:text-emerald-800 font-semibold"
-                            >
-                              <Phone className="h-3 w-3 text-emerald-600" />
-                              <span>{user.Number}</span>
-                            </a>
-                          ) : (
-                            <span className="text-slate-400">-</span>
-                          )}
-                        </td>
+                          {/* Number */}
+                          <td className="py-3 px-4 font-mono">
+                            {user.Number ? (
+                              <a
+                                href={`https://wa.me/91${user.Number.replace(/\D/g, '')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-emerald-700 hover:text-emerald-800 font-semibold"
+                              >
+                                <Phone className="h-3 w-3 text-emerald-600" />
+                                <span>{user.Number}</span>
+                              </a>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
+                          </td>
 
-                        {/* Role */}
-                        <td className="py-3 px-4">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            isAdmin ? 'bg-purple-100 text-purple-800 border border-purple-200' :
-                            isInactive ? 'bg-rose-100 text-rose-800 border border-rose-200' :
-                            'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                          }`}>
-                            {isAdmin && <Shield className="h-3 w-3" />}
-                            {isInactive ? '⛔ Inactive' : isAdmin ? '🛡️ Admin' : '👤 User'}
-                          </span>
-                        </td>
+                          {/* Role */}
+                          <td className="py-3 px-4">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                              isAdmin ? 'bg-purple-100 text-purple-800 border border-purple-200' :
+                              isInactive ? 'bg-rose-100 text-rose-800 border border-rose-200' :
+                              'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            }`}>
+                              {isAdmin && <Shield className="h-3 w-3" />}
+                              {isInactive ? '⛔ Inactive' : isAdmin ? '🛡️ Admin' : '👤 User'}
+                            </span>
+                          </td>
 
-                        {/* Password */}
-                        <td className="py-3 px-4 font-mono text-slate-600">
-                          <span className="px-2 py-0.5 rounded bg-slate-100 text-[11px] font-semibold">
-                            {user.password || '••••••'}
-                          </span>
-                        </td>
+                          {/* Password */}
+                          <td className="py-3 px-4 font-mono text-slate-600">
+                            <span className="px-2 py-0.5 rounded bg-slate-100 text-[11px] font-semibold">
+                              {user.password || '••••••'}
+                            </span>
+                          </td>
 
-                        {/* Actions */}
-                        <td className="py-3 px-4 text-right">
-                          <div className="inline-flex items-center gap-1.5">
-                            {/* Toggle Active / Inactive */}
-                            <button
-                              onClick={() => handleToggleUserStatus(user)}
-                              className={`p-1.5 rounded-lg transition-colors ${
-                                isInactive 
-                                  ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' 
-                                  : 'bg-amber-50 text-amber-600 hover:bg-amber-100'
-                              }`}
-                              title={isInactive ? 'Activate User' : 'Deactivate User'}
-                            >
-                              {isInactive ? <UserCheck className="h-3.5 w-3.5" /> : <UserX className="h-3.5 w-3.5" />}
-                            </button>
+                          {/* Actions */}
+                          <td className="py-3 px-4 text-right">
+                            <div className="inline-flex items-center gap-1.5">
+                              {/* Toggle Active / Inactive */}
+                              <button
+                                onClick={() => handleToggleUserStatus(user)}
+                                className={`p-1.5 rounded-lg transition-colors ${
+                                  isInactive 
+                                    ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' 
+                                    : 'bg-amber-50 text-amber-600 hover:bg-amber-100'
+                                }`}
+                                title={isInactive ? 'Activate User' : 'Deactivate User'}
+                              >
+                                {isInactive ? <UserCheck className="h-3.5 w-3.5" /> : <UserX className="h-3.5 w-3.5" />}
+                              </button>
 
-                            {/* Edit User */}
-                            <button
-                              onClick={() => handleOpenEditUserModal(user)}
-                              className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors"
-                              title="Edit User ID & Password"
-                            >
-                              <Edit3 className="h-3.5 w-3.5" />
-                            </button>
+                              {/* Edit User */}
+                              <button
+                                onClick={() => handleOpenEditUserModal(user)}
+                                className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors"
+                                title="Edit User ID & Password"
+                              >
+                                <Edit3 className="h-3.5 w-3.5" />
+                              </button>
 
-                            {/* Delete User */}
-                            <button
-                              onClick={() => handleDeleteUser(user)}
-                              className="p-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors"
-                              title="Delete User ID permanently"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
+                              {/* Delete User */}
+                              <button
+                                onClick={() => handleDeleteUser(user)}
+                                className="p-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors"
+                                title="Delete User ID permanently"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </td>
 
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* ========================================================================= */}
         {/* MODAL: CREATE / EDIT USER ID                                              */}
@@ -2589,1091 +2865,1099 @@ export default function AdminSettings() {
         {/* ========================================================================= */}
         {/* NEW DEDICATED SECTION 2: MANUAL DATA DUMP TO GOOGLE SHEET & BACKUP        */}
         {/* ========================================================================= */}
-        <div className="bg-white/90 backdrop-blur-xl border-2 border-indigo-200/80 rounded-3xl p-6 md:p-8 shadow-md space-y-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-            <div className="flex items-center gap-3.5">
-              <div className="p-3 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-lg shadow-emerald-500/20">
-                <FileSpreadsheet className="h-6 w-6" />
+        {currentTab === 'manual-data-dump' && (
+          <div id="manual-data-dump" className="bg-white/90 backdrop-blur-xl border-2 border-indigo-200/80 rounded-3xl p-6 md:p-8 shadow-md space-y-6 scroll-mt-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+              <div className="flex items-center gap-3.5">
+                <div className="p-3 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-lg shadow-emerald-500/20">
+                  <FileSpreadsheet className="h-6 w-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-extrabold text-slate-800 flex items-center gap-2">
+                    <span>📤 Manual Data Dump to Google Sheet</span>
+                    <span className="px-2.5 py-0.5 text-[11px] font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      Live Sheet Sync
+                    </span>
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Checklist, Delegation aur Whatsapp users ka live Supabase data ek click me Google Sheet par dump / sync karein.
+                  </p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-xl font-extrabold text-slate-800 flex items-center gap-2">
-                  <span>📤 Manual Data Dump to Google Sheet</span>
-                  <span className="px-2.5 py-0.5 text-[11px] font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                    Live Sheet Sync
-                  </span>
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Checklist, Delegation aur Whatsapp users ka live Supabase data ek click me Google Sheet par dump / sync karein.
-                </p>
-              </div>
+
+              {/* Overwrite Toggle */}
+              <label className="flex items-center gap-2.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={clearBeforeDump}
+                  onChange={(e) => setClearBeforeDump(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                />
+                <span className="text-xs font-semibold text-slate-700">Overwrite / Replace Sheet Content</span>
+              </label>
             </div>
 
-            {/* Overwrite Toggle */}
-            <label className="flex items-center gap-2.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
-              <input
-                type="checkbox"
-                checked={clearBeforeDump}
-                onChange={(e) => setClearBeforeDump(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-              />
-              <span className="text-xs font-semibold text-slate-700">Overwrite / Replace Sheet Content</span>
-            </label>
-          </div>
-
-          {/* Configuration: Apps Script URL & Target Google Sheet URL/ID */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-50 via-indigo-50/40 to-slate-50 border border-indigo-100/80 shadow-sm space-y-4">
-            
-            {/* Field 1: Google Apps Script Web App URL */}
-            <div className="space-y-1.5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                <div className="flex items-center gap-2">
-                  <Terminal className="h-4 w-4 text-indigo-600" />
-                  <label className="text-xs font-bold text-slate-800 uppercase tracking-wide">
-                    Google Apps Script Web App URL
-                  </label>
-                  {isAppsScriptSaved && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold animate-in fade-in">
-                      <Check className="h-3 w-3" /> Saved
-                    </span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleAppsScriptUrlChange(APPS_SCRIPT_URL)}
-                  className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 underline self-start sm:self-auto"
-                  title="Reset to default deployment script URL"
-                >
-                  Reset to Default Script URL
-                </button>
-              </div>
-
-              <div className="relative flex items-center">
-                <input
-                  type="text"
-                  value={appsScriptUrl}
-                  onChange={(e) => handleAppsScriptUrlChange(e.target.value)}
-                  placeholder="https://script.google.com/macros/s/XXXXX/exec"
-                  className="w-full pl-3.5 pr-8 py-2.5 bg-white border border-slate-300 focus:border-indigo-500 rounded-xl text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-inner"
-                />
-                {appsScriptUrl && (
+            {/* Configuration: Apps Script URL & Target Google Sheet URL/ID */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-50 via-indigo-50/40 to-slate-50 border border-indigo-100/80 shadow-sm space-y-4">
+              
+              {/* Field 1: Google Apps Script Web App URL */}
+              <div className="space-y-1.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <div className="flex items-center gap-2">
+                    <Terminal className="h-4 w-4 text-indigo-600" />
+                    <label className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                      Google Apps Script Web App URL
+                    </label>
+                    {isAppsScriptSaved && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold animate-in fade-in">
+                        <Check className="h-3 w-3" /> Saved
+                      </span>
+                    )}
+                  </div>
                   <button
                     type="button"
-                    onClick={() => handleAppsScriptUrlChange('')}
-                    className="absolute right-2.5 text-slate-400 hover:text-slate-600 p-1"
-                    title="Clear Apps Script URL"
+                    onClick={() => handleAppsScriptUrlChange(APPS_SCRIPT_URL)}
+                    className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 underline self-start sm:self-auto"
+                    title="Reset to default deployment script URL"
                   >
-                    <X className="h-3.5 w-3.5" />
+                    Reset to Default Script URL
                   </button>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-500">
-                Google Apps Script Web App deployment link (e.g. <code className="text-indigo-700 bg-indigo-50 px-1 rounded">https://script.google.com/macros/s/.../exec</code>). Yahan naya deployed Apps Script URL paste kar sakte hain.
-              </p>
-            </div>
-
-            {/* Field 2: Target Google Sheet URL / ID */}
-            <div className="space-y-1.5 pt-3 border-t border-indigo-100/60">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                <div className="flex items-center gap-2">
-                  <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
-                  <label className="text-xs font-bold text-slate-800 uppercase tracking-wide">
-                    Target Google Sheet URL / Spreadsheet ID
-                  </label>
-                  {isUrlSaved && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold animate-in fade-in">
-                      <Check className="h-3 w-3" /> Saved
-                    </span>
-                  )}
                 </div>
-                {extractSpreadsheetId(targetSheetUrl) && (
-                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono">
-                    <span className="text-slate-400">Extracted ID:</span>
-                    <span className="font-bold text-indigo-700 bg-indigo-100/70 px-2 py-0.5 rounded-md truncate max-w-[200px] sm:max-w-[300px]">
-                      {extractSpreadsheetId(targetSheetUrl)}
-                    </span>
-                  </div>
-                )}
-              </div>
 
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                <div className="relative flex-1">
+                <div className="relative flex items-center">
                   <input
                     type="text"
-                    value={targetSheetUrl}
-                    onChange={(e) => handleTargetSheetUrlChange(e.target.value)}
-                    placeholder="Paste Google Sheet URL (e.g. https://docs.google.com/spreadsheets/d/1r3YHy.../edit) or raw Sheet ID"
-                    className="w-full pl-3.5 pr-8 py-2.5 bg-white border border-slate-300 focus:border-indigo-500 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-inner"
+                    value={appsScriptUrl}
+                    onChange={(e) => handleAppsScriptUrlChange(e.target.value)}
+                    placeholder="https://script.google.com/macros/s/XXXXX/exec"
+                    className="w-full pl-3.5 pr-8 py-2.5 bg-white border border-slate-300 focus:border-indigo-500 rounded-xl text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-inner"
                   />
-                  {targetSheetUrl && (
+                  {appsScriptUrl && (
                     <button
                       type="button"
-                      onClick={() => handleTargetSheetUrlChange('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs p-1"
-                      title="Clear URL"
+                      onClick={() => handleAppsScriptUrlChange('')}
+                      className="absolute right-2.5 text-slate-400 hover:text-slate-600 p-1"
+                      title="Clear Apps Script URL"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
                   )}
                 </div>
-
-                {targetSheetUrl && (
-                  <a
-                    href={targetSheetUrl.startsWith('http') ? targetSheetUrl : `https://docs.google.com/spreadsheets/d/${targetSheetUrl}/edit`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0"
-                    title="Open Target Google Sheet in new tab"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5 text-indigo-600" />
-                    <span>Open Sheet</span>
-                  </a>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-500">
-                Jis Google Sheet me data dump karna hai uska URL ya Sheet ID yahan paste karein.
-              </p>
-            </div>
-
-            {/* Action Buttons: Save Configuration & Test Connection */}
-            <div className="pt-3 border-t border-indigo-100/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2.5">
-                <button
-                  type="button"
-                  onClick={handleSaveSheetConfig}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-500/20 active:scale-95 cursor-pointer"
-                >
-                  <Save className="h-3.5 w-3.5" />
-                  <span>Save Configuration (Permanent)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleTestConnection}
-                  disabled={isTestingConnection || !targetSheetUrl || !appsScriptUrl}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-indigo-500/20 active:scale-95 cursor-pointer"
-                >
-                  {isTestingConnection ? (
-                    <>
-                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                      <span>Testing Connection...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="h-3.5 w-3.5" />
-                      <span>Test Connection (Verify Sheet &amp; Script)</span>
-                    </>
-                  )}
-                </button>
-              </div>
-
-              <span className="text-[11px] text-slate-500 italic">
-                * Ek baar <strong>Save Configuration</strong> kar denge to aage se hamesha isi Sheet me data dump hoga.
-              </span>
-            </div>
-
-            {/* Save Success Banner */}
-            {saveSuccessMsg && (
-              <div className="p-3.5 rounded-xl border bg-emerald-50 border-emerald-300 text-emerald-900 text-xs flex items-center gap-2.5 animate-in fade-in shadow-sm">
-                <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
-                <span className="font-semibold">{saveSuccessMsg}</span>
-              </div>
-            )}
-
-            {/* Test Connection Result Card */}
-            {connectionTestResult && (
-              <div className={`p-3.5 rounded-xl border text-xs flex items-start gap-2.5 animate-in fade-in ${
-                connectionTestResult.success 
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900' 
-                  : 'bg-rose-50 border-rose-200 text-rose-900'
-              }`}>
-                {connectionTestResult.success ? (
-                  <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
-                ) : (
-                  <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
-                )}
-                <div className="space-y-1">
-                  <div className="font-bold">{connectionTestResult.message}</div>
-                  {connectionTestResult.sheets && connectionTestResult.sheets.length > 0 && (
-                    <div className="text-[11px] opacity-90">
-                      Existing Sheet Tabs: <span className="font-mono font-semibold">{connectionTestResult.sheets.join(', ')}</span>
-                    </div>
-                  )}
-                  {!connectionTestResult.success && (
-                    <div className="text-[11px] text-rose-700 mt-1 leading-relaxed">
-                      👉 <strong>Checklist for Resolution:</strong><br />
-                      1. Google Apps Script me <code className="bg-rose-100 px-1 py-0.5 rounded">apps-script-Code-final.gs</code> ka latest code paste karein.<br />
-                      2. <strong>Deploy &gt; New deployment &gt; Select type: Web App</strong> karein.<br />
-                      3. <strong>Execute as: Me</strong> aur <strong>Who has access: Anyone</strong> select karein.<br />
-                      4. Google Sheet me edit access allow hona chahiye.
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-          </div>
-
-          {/* Dump Action Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            
-            {/* 1. Checklist Dump Card */}
-            <div className="p-5 rounded-2xl bg-gradient-to-br from-indigo-50/80 to-blue-50/50 border border-indigo-100 space-y-4 flex flex-col justify-between">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-indigo-950 flex items-center gap-2">
-                    <ListChecks className="h-4 w-4 text-indigo-600" />
-                    Checklist Sheet Dump
-                  </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-200/60 font-bold text-indigo-800">
-                    {checklistCount.toLocaleString()} Rows
-                  </span>
-                </div>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Supabase `Checklist` table ka saara data Google Sheet ke `Checklist` tab me dump karta hai.
+                <p className="text-[11px] text-slate-500">
+                  Google Apps Script Web App deployment link (e.g. <code className="text-indigo-700 bg-indigo-50 px-1 rounded">https://script.google.com/macros/s/.../exec</code>). Yahan naya deployed Apps Script URL paste kar sakte hain.
                 </p>
               </div>
 
-              <div className="space-y-2 pt-2">
-                <button
-                  onClick={() => handleDumpToSheet('checklist')}
-                  disabled={isDumping}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-                >
-                  <UploadCloud className={`h-4 w-4 ${isDumping ? 'animate-bounce' : ''}`} />
-                  <span>Dump Checklist to Google Sheet</span>
-                </button>
-                <button
-                  onClick={() => handleDownloadCSV('Checklist')}
-                  className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl font-semibold text-[11px] text-indigo-700 bg-white border border-indigo-200 hover:bg-indigo-50 transition-colors cursor-pointer"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  <span>Download Checklist CSV</span>
-                </button>
-              </div>
-            </div>
-
-            {/* 2. Delegation Dump Card */}
-            <div className="p-5 rounded-2xl bg-gradient-to-br from-purple-50/80 to-pink-50/50 border border-purple-100 space-y-4 flex flex-col justify-between">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-purple-950 flex items-center gap-2">
-                    <Layers className="h-4 w-4 text-purple-600" />
-                    Delegation Sheet Dump
-                  </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-200/60 font-bold text-purple-800">
-                    {delegationCount.toLocaleString()} Rows
-                  </span>
-                </div>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Supabase `Delegation` aur `DELEGATION DONE` tables ka data Google Sheet me sync karta hai.
-                </p>
-              </div>
-
-              <div className="space-y-2 pt-2">
-                <button
-                  onClick={() => handleDumpToSheet('delegation')}
-                  disabled={isDumping}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-purple-600 hover:bg-purple-700 shadow-md shadow-purple-600/20 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-                >
-                  <UploadCloud className={`h-4 w-4 ${isDumping ? 'animate-bounce' : ''}`} />
-                  <span>Dump Delegation to Google Sheet</span>
-                </button>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    onClick={() => handleDownloadCSV('Delegation')}
-                    className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl font-semibold text-[10px] text-purple-700 bg-white border border-purple-200 hover:bg-purple-50 cursor-pointer"
-                  >
-                    <Download className="h-3 w-3" />
-                    <span>Delegation CSV</span>
-                  </button>
-                  <button
-                    onClick={() => handleDownloadCSV('DELEGATION DONE')}
-                    className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl font-semibold text-[10px] text-purple-700 bg-white border border-purple-200 hover:bg-purple-50 cursor-pointer"
-                  >
-                    <Download className="h-3 w-3" />
-                    <span>Done CSV</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* 3. Full Combined Dump Card */}
-            <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-500 via-teal-600 to-cyan-600 text-white space-y-4 flex flex-col justify-between shadow-lg shadow-emerald-500/20">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-extrabold text-sm flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-amber-300" />
-                    Full Sync (All Sheets)
-                  </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/20 font-bold">
-                    Checklist + Delegation + Users
-                  </span>
-                </div>
-                <p className="text-xs text-emerald-100 leading-relaxed">
-                  Ek sath Checklist + Delegation + Whatsapp Users ka poora data live Google Sheet par dump karein.
-                </p>
-              </div>
-
-              <div className="space-y-2 pt-2">
-                <button
-                  onClick={() => handleDumpToSheet('all')}
-                  disabled={isDumping}
-                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-xs text-slate-900 bg-white hover:bg-emerald-50 shadow-md transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-                >
-                  <Zap className={`h-4 w-4 text-emerald-600 ${isDumping ? 'animate-spin' : ''}`} />
-                  <span>{isDumping ? 'Dumping in Progress...' : '🚀 Dump All to Google Sheet'}</span>
-                </button>
-                <a
-                  href={targetSheetUrl.startsWith('http') ? targetSheetUrl : `https://docs.google.com/spreadsheets/d/${targetSheetUrl}/edit`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full flex items-center justify-center gap-1 py-1.5 px-3 rounded-xl font-semibold text-[11px] text-white/90 hover:text-white bg-white/10 hover:bg-white/20 transition-colors"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  <span>Open Target Google Sheet</span>
-                </a>
-              </div>
-            </div>
-
-          </div>
-
-          {/* Progress Bar & Live Dump Status (when running) */}
-          {(isDumping || dumpProgress > 0) && (
-            <div className="space-y-3 p-4 rounded-2xl bg-slate-900 text-white border border-slate-800">
-              <div className="flex items-center justify-between text-xs font-semibold">
-                <span className="flex items-center gap-2 text-emerald-400 font-mono">
-                  <RefreshCw className={`h-3.5 w-3.5 ${isDumping ? 'animate-spin' : ''}`} />
-                  {dumpStatusMsg}
-                </span>
-                <span className="font-bold font-mono text-emerald-400">{dumpProgress}%</span>
-              </div>
-
-              {/* Progress track */}
-              <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 transition-all duration-300 rounded-full"
-                  style={{ width: `${dumpProgress}%` }}
-                />
-              </div>
-
-              {/* Logs terminal */}
-              <div className="max-h-36 overflow-y-auto space-y-1 font-mono text-[11px] pt-2 border-t border-slate-800">
-                {dumpLogs.map((log, idx) => (
-                  <div key={idx} className="flex items-start gap-2">
-                    <span className="text-slate-500">[{log.time}]</span>
-                    <span className={
-                      log.type === 'error' ? 'text-rose-400 font-bold' :
-                      log.type === 'success' ? 'text-emerald-400 font-bold' :
-                      'text-slate-300'
-                    }>
-                      {log.message}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Main Grid: Trigger Console + Automation Rules */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Left 2 Cols: Interactive Trigger Console */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-6 md:p-7 shadow-sm space-y-6">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/20">
-                    <Sliders className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-slate-800">Task Generation Trigger Console</h2>
-                    <p className="text-xs text-slate-500">Run or simulate task generation from Unique templates</p>
-                  </div>
-                </div>
-                <button
-                  onClick={loadData}
-                  disabled={loading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-                  Sync Data
-                </button>
-              </div>
-
-              {/* Live Cloud Cron Countdown & Timing Control Banner */}
-              <div className="rounded-2xl p-4 md:p-5 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/40 text-white shadow-xl space-y-4">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  
-                  {/* Left: Schedule Details */}
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="relative flex h-2.5 w-2.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              {/* Field 2: Target Google Sheet URL / ID */}
+              <div className="space-y-1.5 pt-3 border-t border-indigo-100/60">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <div className="flex items-center gap-2">
+                    <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                    <label className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                      Target Google Sheet URL / Spreadsheet ID
+                    </label>
+                    {isUrlSaved && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold animate-in fade-in">
+                        <Check className="h-3 w-3" /> Saved
                       </span>
-                      <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                        Automated Cloud Trigger
-                      </span>
-                      <span className="px-2 py-0.5 rounded-full bg-indigo-500/30 border border-indigo-400/30 text-[10px] font-semibold text-indigo-200">
-                        {formatHourLabel(nightlyTriggerHour)}
+                    )}
+                  </div>
+                  {extractSpreadsheetId(targetSheetUrl) && (
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono">
+                      <span className="text-slate-400">Extracted ID:</span>
+                      <span className="font-bold text-indigo-700 bg-indigo-100/70 px-2 py-0.5 rounded-md truncate max-w-[200px] sm:max-w-[300px]">
+                        {extractSpreadsheetId(targetSheetUrl)}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-300">
-                      Next Auto-Run: <span className="text-white font-semibold">{countdown.nextDateStr}</span>
-                    </p>
-                  </div>
-
-                  {/* Right: Live Digital Countdown */}
-                  <div className="flex items-center gap-2 bg-black/40 border border-indigo-500/30 rounded-2xl px-4 py-2 self-start md:self-auto shadow-inner">
-                    <Clock className="h-5 w-5 text-amber-400 animate-pulse shrink-0" />
-                    <div className="flex items-baseline gap-1.5 font-mono">
-                      <div className="text-center">
-                        <span className="text-lg md:text-xl font-black text-white bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700 shadow">
-                          {countdown.hours}
-                        </span>
-                        <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-sans mt-0.5">Hours</span>
-                      </div>
-                      <span className="text-amber-400 font-bold text-lg">:</span>
-                      <div className="text-center">
-                        <span className="text-lg md:text-xl font-black text-white bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700 shadow">
-                          {countdown.minutes}
-                        </span>
-                        <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-sans mt-0.5">Mins</span>
-                      </div>
-                      <span className="text-amber-400 font-bold text-lg">:</span>
-                      <div className="text-center">
-                        <span className="text-lg md:text-xl font-black text-amber-300 bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700 shadow">
-                          {countdown.seconds}
-                        </span>
-                        <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-sans mt-0.5">Secs</span>
-                      </div>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
-                {/* Change Trigger Timing Control Bar */}
-                <div className="pt-3 border-t border-indigo-800/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 text-xs text-indigo-200">
-                    <Sliders className="h-4 w-4 text-indigo-400" />
-                    <span>Change Automatic Trigger Time:</span>
-                  </div>
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <select
-                      value={selectedTimingHour}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setSelectedTimingHour(val);
-                        setNightlyTriggerHour(val);
-                        localStorage.setItem('nightly_trigger_hour', String(val));
-                      }}
-                      className="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-medium text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto"
-                    >
-                      {TIMING_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value} className="bg-slate-900 text-white">
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => handleSetupNightlyTrigger(selectedTimingHour)}
-                      disabled={isSettingUpNightlyTrigger}
-                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-50 shrink-0 flex items-center gap-1.5"
-                    >
-                      <Zap className={`h-3 w-3 ${isSettingUpNightlyTrigger ? 'animate-spin' : ''}`} />
-                      <span>{isSettingUpNightlyTrigger ? 'Updating...' : 'Set Timing'}</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Trigger Settings Controls */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
-                    Target Execution Date
-                  </label>
-                  <input
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                  />
-                  <p className="text-[11px] text-slate-400 mt-1">Tasks will be dated for this day</p>
-                </div>
-
-                <div className="flex flex-col justify-between">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
-                    Calendar Policy
-                  </label>
-                  <label className="flex items-center gap-3 p-2.5 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-100/70 transition-colors">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <div className="relative flex-1">
                     <input
-                      type="checkbox"
-                      checked={ignoreCalendarCheck}
-                      onChange={(e) => setIgnoreCalendarCheck(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      type="text"
+                      value={targetSheetUrl}
+                      onChange={(e) => handleTargetSheetUrlChange(e.target.value)}
+                      placeholder="Paste Google Sheet URL (e.g. https://docs.google.com/spreadsheets/d/1r3YHy.../edit) or raw Sheet ID"
+                      className="w-full pl-3.5 pr-8 py-2.5 bg-white border border-slate-300 focus:border-indigo-500 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-inner"
                     />
-                    <div className="text-xs">
-                      <span className="font-semibold text-slate-700 block">Ignore Holiday / Calendar Check</span>
-                      <span className="text-slate-400 text-[10px]">Force run even if marked non-working day</span>
-                    </div>
-                  </label>
-                </div>
-              </div>
-
-              {/* Action Trigger Box */}
-              <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-50/70 via-purple-50/70 to-pink-50/70 border border-indigo-100 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="text-xs space-y-1">
-                  <div className="font-bold text-slate-800 flex items-center gap-2">
-                    <Zap className="h-4 w-4 text-indigo-600" />
-                    <span>Trigger Ready: {dueTemplatesCount} template(s) due to generate</span>
+                    {targetSheetUrl && (
+                      <button
+                        type="button"
+                        onClick={() => handleTargetSheetUrlChange('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs p-1"
+                        title="Clear URL"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
-                  <p className="text-slate-500 text-[11px]">
-                    Evaluates frequencies (Daily, Weekly, Monthly, Yearly) and automatically prevents duplicate generation.
-                  </p>
-                </div>
-                <button
-                  onClick={() => handleExecuteTrigger()}
-                  disabled={isRunningTrigger || loading}
-                  className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-50"
-                >
-                  {isRunningTrigger ? (
-                    <>
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                      <span>Processing...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play className="h-4 w-4 fill-white" />
-                      <span>Execute Trigger</span>
-                    </>
-                  )}
-                </button>
-              </div>
 
-              {/* Live Execution Output Terminal */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-                    <Terminal className="h-3.5 w-3.5" />
-                    Live Trigger Terminal Logs
-                  </span>
-                  {executionLogs.length > 0 && (
-                    <button
-                      onClick={() => setExecutionLogs([])}
-                      className="text-[11px] text-slate-400 hover:text-slate-600 underline"
+                  {targetSheetUrl && (
+                    <a
+                      href={targetSheetUrl.startsWith('http') ? targetSheetUrl : `https://docs.google.com/spreadsheets/d/${targetSheetUrl}/edit`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0"
+                      title="Open Target Google Sheet in new tab"
                     >
-                      Clear
-                    </button>
+                      <ExternalLink className="h-3.5 w-3.5 text-indigo-600" />
+                      <span>Open Sheet</span>
+                    </a>
                   )}
                 </div>
-
-                <div className="bg-slate-900 text-slate-100 rounded-2xl p-4 font-mono text-xs max-h-56 overflow-y-auto space-y-1.5 border border-slate-800 shadow-inner">
-                  {executionLogs.length === 0 ? (
-                    <div className="text-slate-500 italic py-3 text-center">
-                      Click 'Execute Trigger' or 'Run Task Generator' to initiate live task generation logs.
-                    </div>
-                  ) : (
-                    executionLogs.map((log, idx) => (
-                      <div key={idx} className="flex items-start gap-2 leading-relaxed">
-                        <span className="text-slate-500 select-none">[{log.time}]</span>
-                        <span className={
-                          log.type === 'error' ? 'text-rose-400 font-semibold' :
-                          log.type === 'warning' ? 'text-amber-300' :
-                          log.type === 'success' ? 'text-emerald-400 font-semibold' :
-                          'text-slate-300'
-                        }>
-                          {log.message}
-                        </span>
-                      </div>
-                    ))
-                  )}
-                </div>
+                <p className="text-[11px] text-slate-500">
+                  Jis Google Sheet me data dump karna hai uska URL ya Sheet ID yahan paste karein.
+                </p>
               </div>
 
-              {/* Result Notification Card if triggered */}
-              {lastResult && (
-                <div className={`p-4 rounded-2xl border text-xs font-semibold flex items-start gap-3 ${
-                  lastResult.success 
+              {/* Action Buttons: Save Configuration & Test Connection */}
+              <div className="pt-3 border-t border-indigo-100/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={handleSaveSheetConfig}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-500/20 active:scale-95 cursor-pointer"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    <span>Save Configuration (Permanent)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleTestConnection}
+                    disabled={isTestingConnection || !targetSheetUrl || !appsScriptUrl}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-indigo-500/20 active:scale-95 cursor-pointer"
+                  >
+                    {isTestingConnection ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        <span>Testing Connection...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="h-3.5 w-3.5" />
+                        <span>Test Connection (Verify Sheet &amp; Script)</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <span className="text-[11px] text-slate-500 italic">
+                  * Ek baar <strong>Save Configuration</strong> kar denge to aage se hamesha isi Sheet me data dump hoga.
+                </span>
+              </div>
+
+              {/* Save Success Banner */}
+              {saveSuccessMsg && (
+                <div className="p-3.5 rounded-xl border bg-emerald-50 border-emerald-300 text-emerald-900 text-xs flex items-center gap-2.5 animate-in fade-in shadow-sm">
+                  <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span className="font-semibold">{saveSuccessMsg}</span>
+                </div>
+              )}
+
+              {/* Test Connection Result Card */}
+              {connectionTestResult && (
+                <div className={`p-3.5 rounded-xl border text-xs flex items-start gap-2.5 animate-in fade-in ${
+                  connectionTestResult.success 
                     ? 'bg-emerald-50 border-emerald-200 text-emerald-900' 
                     : 'bg-rose-50 border-rose-200 text-rose-900'
                 }`}>
-                  {lastResult.success ? (
-                    <CheckCircle className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+                  {connectionTestResult.success ? (
+                    <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
                   ) : (
-                    <AlertTriangle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
+                    <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
                   )}
-                  <div>
-                    <div className="font-bold">{lastResult.message}</div>
-                    <div className="text-[11px] opacity-80 mt-1">
-                      Inserted {lastResult.tasksGenerated || 0} tasks into Checklist table in Supabase.
-                    </div>
+                  <div className="space-y-1">
+                    <div className="font-bold">{connectionTestResult.message}</div>
+                    {connectionTestResult.sheets && connectionTestResult.sheets.length > 0 && (
+                      <div className="text-[11px] opacity-90">
+                        Existing Sheet Tabs: <span className="font-mono font-semibold">{connectionTestResult.sheets.join(', ')}</span>
+                      </div>
+                    )}
+                    {!connectionTestResult.success && (
+                      <div className="text-[11px] text-rose-700 mt-1 leading-relaxed">
+                        👉 <strong>Checklist for Resolution:</strong><br />
+                        1. Google Apps Script me <code className="bg-rose-100 px-1 py-0.5 rounded">apps-script-Code-final.gs</code> ka latest code paste karein.<br />
+                        2. <strong>Deploy &gt; New deployment &gt; Select type: Web App</strong> karein.<br />
+                        3. <strong>Execute as: Me</strong> aur <strong>Who has access: Anyone</strong> select karein.<br />
+                        4. Google Sheet me edit access allow hona chahiye.
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
 
             </div>
-          </div>
 
-          {/* Right 1 Col: Automation & Schedule Settings */}
-          <div className="space-y-6">
-            
-            {/* 🌙 Nightly Cloud Cron Generator Card */}
-            <div className="relative overflow-hidden rounded-[28px] p-[1px] bg-gradient-to-br from-indigo-400/40 via-purple-500/20 to-transparent shadow-2xl shadow-indigo-950/40">
-              <div className="relative rounded-[27px] bg-gradient-to-br from-slate-950 via-indigo-950 to-purple-950/90 text-white p-6 space-y-5 overflow-hidden">
-                {/* Ambient glow accents */}
-                <div className="absolute -top-16 -right-10 w-48 h-48 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
-                <div className="absolute -bottom-20 -left-12 w-52 h-52 bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
-                <div className="absolute inset-0 opacity-[0.15] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.4) 1px, transparent 0)', backgroundSize: '22px 22px' }} />
-
-                {/* Header */}
-                <div className="relative flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="relative p-3 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-amber-300 shadow-lg shadow-indigo-500/40">
-                      <Moon className="h-5 w-5" />
-                      <span className="absolute inset-0 rounded-2xl ring-1 ring-white/20" />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-bold text-white tracking-tight">Cloud Task Generator</h3>
-                      <p className="text-[11px] text-indigo-300/90 font-medium">Serverless Google Cloud Cron</p>
-                    </div>
-                  </div>
-                  <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 text-[10px] font-bold border border-emerald-400/30 shadow-sm shadow-emerald-500/20">
-                    <span className="relative flex h-1.5 w-1.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
+            {/* Dump Action Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              
+              {/* 1. Checklist Dump Card */}
+              <div className="p-5 rounded-2xl bg-gradient-to-br from-indigo-50/80 to-blue-50/50 border border-indigo-100 space-y-4 flex flex-col justify-between">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-sm text-indigo-950 flex items-center gap-2">
+                      <ListChecks className="h-4 w-4 text-indigo-600" />
+                      Checklist Sheet Dump
                     </span>
-                    Active
-                  </span>
-                </div>
-
-                {/* Countdown widget */}
-                <div className="relative rounded-2xl bg-black/30 border border-white/10 backdrop-blur-sm p-4 flex items-center justify-between gap-3">
-                  <div>
-                    <span className="text-slate-400 block text-[10px] uppercase tracking-[0.15em] font-bold">Time to Next Trigger</span>
-                    <span className="font-bold text-white text-sm mt-0.5 block">{formatHourLabel(nightlyTriggerHour)}</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-200/60 font-bold text-indigo-800">
+                      {checklistCount.toLocaleString()} Rows
+                    </span>
                   </div>
-                  <div className="flex items-center gap-1.5 font-mono">
-                    {[
-                      { v: countdown.hours, l: 'HRS' },
-                      { v: countdown.minutes, l: 'MIN' },
-                      { v: countdown.seconds, l: 'SEC' },
-                    ].map((seg, i) => (
-                      <React.Fragment key={seg.l}>
-                        {i > 0 && <span className="text-amber-300/60 font-black text-lg pb-3">:</span>}
-                        <div className="flex flex-col items-center">
-                          <span className="text-lg font-black text-amber-300 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-white/10 shadow-inner min-w-[2.4rem] text-center tabular-nums">
-                            {String(seg.v).padStart(2, '0')}
-                          </span>
-                          <span className="text-[8px] text-slate-500 font-bold tracking-wider mt-1">{seg.l}</span>
-                        </div>
-                      </React.Fragment>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Description */}
-                <div className="relative space-y-2.5 text-xs leading-relaxed">
-                  <div className="flex items-center gap-2 text-slate-200">
-                    <span className="text-amber-300">🕒</span>
-                    <span><strong className="text-white font-semibold">Schedule:</strong> Every day at <span className="text-amber-300 font-bold">{formatHourLabel(nightlyTriggerHour)}</span></span>
-                  </div>
-                  <p className="text-[11px] text-slate-400/90 leading-relaxed">
-                    Google Apps Script automatically evaluates the <span className="text-indigo-300 font-semibold">Working Calendar</span> &amp; <span className="text-indigo-300 font-semibold">Unique Templates</span> and inserts the new day's tasks directly into Supabase &amp; Sheets without needing any browser open.
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Supabase `Checklist` table ka saara data Google Sheet ke `Checklist` tab me dump karta hai.
                   </p>
                 </div>
 
-                {nightlyTriggerStatus && (
-                  <div className="relative p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-400/30 text-emerald-300 text-xs flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0" />
-                    <span>{nightlyTriggerStatus}</span>
+                <div className="space-y-2 pt-2">
+                  <button
+                    onClick={() => handleDumpToSheet('checklist')}
+                    disabled={isDumping}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                  >
+                    <UploadCloud className={`h-4 w-4 ${isDumping ? 'animate-bounce' : ''}`} />
+                    <span>Dump Checklist to Google Sheet</span>
+                  </button>
+                  <button
+                    onClick={() => handleDownloadCSV('Checklist')}
+                    className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl font-semibold text-[11px] text-indigo-700 bg-white border border-indigo-200 hover:bg-indigo-50 transition-colors cursor-pointer"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Download Checklist CSV</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. Delegation Dump Card */}
+              <div className="p-5 rounded-2xl bg-gradient-to-br from-purple-50/80 to-pink-50/50 border border-purple-100 space-y-4 flex flex-col justify-between">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-sm text-purple-950 flex items-center gap-2">
+                      <Layers className="h-4 w-4 text-purple-600" />
+                      Delegation Sheet Dump
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-200/60 font-bold text-purple-800">
+                      {delegationCount.toLocaleString()} Rows
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Supabase `Delegation` aur `DELEGATION DONE` tables ka data Google Sheet me sync karta hai.
+                  </p>
+                </div>
+
+                <div className="space-y-2 pt-2">
+                  <button
+                    onClick={() => handleDumpToSheet('delegation')}
+                    disabled={isDumping}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-purple-600 hover:bg-purple-700 shadow-md shadow-purple-600/20 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                  >
+                    <UploadCloud className={`h-4 w-4 ${isDumping ? 'animate-bounce' : ''}`} />
+                    <span>Dump Delegation to Google Sheet</span>
+                  </button>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      onClick={() => handleDownloadCSV('Delegation')}
+                      className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl font-semibold text-[10px] text-purple-700 bg-white border border-purple-200 hover:bg-purple-50 cursor-pointer"
+                    >
+                      <Download className="h-3 w-3" />
+                      <span>Delegation CSV</span>
+                    </button>
+                    <button
+                      onClick={() => handleDownloadCSV('DELEGATION DONE')}
+                      className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl font-semibold text-[10px] text-purple-700 bg-white border border-purple-200 hover:bg-purple-50 cursor-pointer"
+                    >
+                      <Download className="h-3 w-3" />
+                      <span>Done CSV</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Full Combined Dump Card */}
+              <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-500 via-teal-600 to-cyan-600 text-white space-y-4 flex flex-col justify-between shadow-lg shadow-emerald-500/20">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-sm flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-amber-300" />
+                      Full Sync (All Sheets)
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/20 font-bold">
+                      Checklist + Delegation + Users
+                    </span>
+                  </div>
+                  <p className="text-xs text-emerald-100 leading-relaxed">
+                    Ek sath Checklist + Delegation + Whatsapp Users ka poora data live Google Sheet par dump karein.
+                  </p>
+                </div>
+
+                <div className="space-y-2 pt-2">
+                  <button
+                    onClick={() => handleDumpToSheet('all')}
+                    disabled={isDumping}
+                    className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-xs text-slate-900 bg-white hover:bg-emerald-50 shadow-md transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                  >
+                    <Zap className={`h-4 w-4 text-emerald-600 ${isDumping ? 'animate-spin' : ''}`} />
+                    <span>{isDumping ? 'Dumping in Progress...' : '🚀 Dump All to Google Sheet'}</span>
+                  </button>
+                  <a
+                    href={targetSheetUrl.startsWith('http') ? targetSheetUrl : `https://docs.google.com/spreadsheets/d/${targetSheetUrl}/edit`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full flex items-center justify-center gap-1 py-1.5 px-3 rounded-xl font-semibold text-[11px] text-white/90 hover:text-white bg-white/10 hover:bg-white/20 transition-colors"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    <span>Open Target Google Sheet</span>
+                  </a>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Progress Bar & Live Dump Status (when running) */}
+            {(isDumping || dumpProgress > 0) && (
+              <div className="space-y-3 p-4 rounded-2xl bg-slate-900 text-white border border-slate-800">
+                <div className="flex items-center justify-between text-xs font-semibold">
+                  <span className="flex items-center gap-2 text-emerald-400 font-mono">
+                    <RefreshCw className={`h-3.5 w-3.5 ${isDumping ? 'animate-spin' : ''}`} />
+                    {dumpStatusMsg}
+                  </span>
+                  <span className="font-bold font-mono text-emerald-400">{dumpProgress}%</span>
+                </div>
+
+                {/* Progress track */}
+                <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400 transition-all duration-300 rounded-full"
+                    style={{ width: `${dumpProgress}%` }}
+                  />
+                </div>
+
+                {/* Logs terminal */}
+                <div className="max-h-36 overflow-y-auto space-y-1 font-mono text-[11px] pt-2 border-t border-slate-800">
+                  {dumpLogs.map((log, idx) => (
+                    <div key={idx} className="flex items-start gap-2">
+                      <span className="text-slate-500">[{log.time}]</span>
+                      <span className={
+                        log.type === 'error' ? 'text-rose-400 font-bold' :
+                        log.type === 'success' ? 'text-emerald-400 font-bold' :
+                        'text-slate-300'
+                      }>
+                        {log.message}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* SECTION 3: TASK GENERATION TRIGGER CONSOLE & AUTOMATION                   */}
+        {/* ========================================================================= */}
+        {currentTab === 'trigger-console' && (
+          <div id="trigger-console" className="grid grid-cols-1 lg:grid-cols-3 gap-8 scroll-mt-6">
+            
+            {/* Left 2 Cols: Interactive Trigger Console */}
+            <div className="lg:col-span-2 space-y-6">
+              <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-6 md:p-7 shadow-sm space-y-6">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/20">
+                      <Sliders className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-bold text-slate-800">Task Generation Trigger Console</h2>
+                      <p className="text-xs text-slate-500">Run or simulate task generation from Unique templates</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={loadData}
+                    disabled={loading}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+                    Sync Data
+                  </button>
+                </div>
+
+                {/* Live Cloud Cron Countdown & Timing Control Banner */}
+                <div className="rounded-2xl p-4 md:p-5 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/40 text-white shadow-xl space-y-4">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    
+                    {/* Left: Schedule Details */}
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="relative flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                        </span>
+                        <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                          Automated Cloud Trigger
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-indigo-500/30 border border-indigo-400/30 text-[10px] font-semibold text-indigo-200">
+                          {formatHourLabel(nightlyTriggerHour)}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-300">
+                        Next Auto-Run: <span className="text-white font-semibold">{countdown.nextDateStr}</span>
+                      </p>
+                    </div>
+
+                    {/* Right: Live Digital Countdown */}
+                    <div className="flex items-center gap-2 bg-black/40 border border-indigo-500/30 rounded-2xl px-4 py-2 self-start md:self-auto shadow-inner">
+                      <Clock className="h-5 w-5 text-amber-400 animate-pulse shrink-0" />
+                      <div className="flex items-baseline gap-1.5 font-mono">
+                        <div className="text-center">
+                          <span className="text-lg md:text-xl font-black text-white bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700 shadow">
+                            {countdown.hours}
+                          </span>
+                          <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-sans mt-0.5">Hours</span>
+                        </div>
+                        <span className="text-amber-400 font-bold text-lg">:</span>
+                        <div className="text-center">
+                          <span className="text-lg md:text-xl font-black text-white bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700 shadow">
+                            {countdown.minutes}
+                          </span>
+                          <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-sans mt-0.5">Mins</span>
+                        </div>
+                        <span className="text-amber-400 font-bold text-lg">:</span>
+                        <div className="text-center">
+                          <span className="text-lg md:text-xl font-black text-amber-300 bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700 shadow">
+                            {countdown.seconds}
+                          </span>
+                          <span className="block text-[9px] uppercase tracking-wider text-slate-400 font-sans mt-0.5">Secs</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Change Trigger Timing Control Bar */}
+                  <div className="pt-3 border-t border-indigo-800/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-xs text-indigo-200">
+                      <Sliders className="h-4 w-4 text-indigo-400" />
+                      <span>Change Automatic Trigger Time:</span>
+                    </div>
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <select
+                        value={selectedTimingHour}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSelectedTimingHour(val);
+                          setNightlyTriggerHour(val);
+                          localStorage.setItem('nightly_trigger_hour', String(val));
+                        }}
+                        className="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-medium text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto"
+                      >
+                        {TIMING_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value} className="bg-slate-900 text-white">
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => handleSetupNightlyTrigger(selectedTimingHour)}
+                        disabled={isSettingUpNightlyTrigger}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-50 shrink-0 flex items-center gap-1.5"
+                      >
+                        <Zap className={`h-3 w-3 ${isSettingUpNightlyTrigger ? 'animate-spin' : ''}`} />
+                        <span>{isSettingUpNightlyTrigger ? 'Updating...' : 'Set Timing'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Trigger Settings Controls */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                      Target Execution Date
+                    </label>
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1">Tasks will be dated for this day</p>
+                  </div>
+
+                  <div className="flex flex-col justify-between">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                      Calendar Policy
+                    </label>
+                    <label className="flex items-center gap-3 p-2.5 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-100/70 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={ignoreCalendarCheck}
+                        onChange={(e) => setIgnoreCalendarCheck(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <div className="text-xs">
+                        <span className="font-semibold text-slate-700 block">Ignore Holiday / Calendar Check</span>
+                        <span className="text-slate-400 text-[10px]">Force run even if marked non-working day</span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Action Trigger Box */}
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-50/70 via-purple-50/70 to-pink-50/70 border border-indigo-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="text-xs space-y-1">
+                    <div className="font-bold text-slate-800 flex items-center gap-2">
+                      <Zap className="h-4 w-4 text-indigo-600" />
+                      <span>Trigger Ready: {dueTemplatesCount} template(s) due to generate</span>
+                    </div>
+                    <p className="text-slate-500 text-[11px]">
+                      Evaluates frequencies (Daily, Weekly, Monthly, Yearly) and automatically prevents duplicate generation.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleExecuteTrigger()}
+                    disabled={isRunningTrigger || loading}
+                    className="w-full sm:w-auto shrink-0 flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    {isRunningTrigger ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        <span>Processing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-4 w-4 fill-white" />
+                        <span>Execute Trigger</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Live Execution Output Terminal */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                      <Terminal className="h-3.5 w-3.5" />
+                      Live Trigger Terminal Logs
+                    </span>
+                    {executionLogs.length > 0 && (
+                      <button
+                        onClick={() => setExecutionLogs([])}
+                        className="text-[11px] text-slate-400 hover:text-slate-600 underline"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="bg-slate-900 text-slate-100 rounded-2xl p-4 font-mono text-xs max-h-56 overflow-y-auto space-y-1.5 border border-slate-800 shadow-inner">
+                    {executionLogs.length === 0 ? (
+                      <div className="text-slate-500 italic py-3 text-center">
+                        Click 'Execute Trigger' or 'Run Task Generator' to initiate live task generation logs.
+                      </div>
+                    ) : (
+                      executionLogs.map((log, idx) => (
+                        <div key={idx} className="flex items-start gap-2 leading-relaxed">
+                          <span className="text-slate-500 select-none">[{log.time}]</span>
+                          <span className={
+                            log.type === 'error' ? 'text-rose-400 font-semibold' :
+                            log.type === 'warning' ? 'text-amber-300' :
+                            log.type === 'success' ? 'text-emerald-400 font-semibold' :
+                            'text-slate-300'
+                          }>
+                            {log.message}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Result Notification Card if triggered */}
+                {lastResult && (
+                  <div className={`p-4 rounded-2xl border text-xs font-semibold flex items-start gap-3 ${
+                    lastResult.success 
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-900' 
+                      : 'bg-rose-50 border-rose-200 text-rose-900'
+                  }`}>
+                    {lastResult.success ? (
+                      <CheckCircle className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertTriangle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
+                    )}
+                    <div>
+                      <div className="font-bold">{lastResult.message}</div>
+                      <div className="text-[11px] opacity-80 mt-1">
+                        Inserted {lastResult.tasksGenerated || 0} tasks into Checklist table in Supabase.
+                      </div>
+                    </div>
                   </div>
                 )}
 
-                {/* Actions */}
-                <div className="relative pt-1 flex flex-col sm:flex-row gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => handleSetupNightlyTrigger(selectedTimingHour)}
-                    disabled={isSettingUpNightlyTrigger}
-                    className="flex-1 flex items-center justify-center gap-2 px-3.5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-50 ring-1 ring-white/10"
-                  >
-                    <Zap className={`h-3.5 w-3.5 ${isSettingUpNightlyTrigger ? 'animate-spin' : ''}`} />
-                    <span>{isSettingUpNightlyTrigger ? 'Configuring Cloud...' : '🌙 Refresh Cloud Trigger'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRunNightlyCloudTest}
-                    disabled={isRunningNightlyTest}
-                    className="flex items-center justify-center gap-2 px-3.5 py-2.5 bg-white/5 hover:bg-white/15 text-white text-xs font-semibold rounded-xl border border-white/15 backdrop-blur-sm transition-all active:scale-95 disabled:opacity-50"
-                  >
-                    <Play className={`h-3.5 w-3.5 fill-current ${isRunningNightlyTest ? 'animate-spin' : ''}`} />
-                    <span>{isRunningNightlyTest ? 'Testing...' : 'Test Cloud Run'}</span>
-                  </button>
-                </div>
               </div>
             </div>
 
-            {/* Automated Schedule Card */}
-            <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-5">
-              <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
-                <div className="p-2 rounded-xl bg-purple-50 text-purple-600">
-                  <Clock className="h-4 w-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-800">Background Automation</h3>
-                  <p className="text-[11px] text-slate-500">Auto-generation preferences</p>
+            {/* Right 1 Col: Automation & Schedule Settings */}
+            <div className="space-y-6">
+              
+              {/* 🌙 Nightly Cloud Cron Generator Card */}
+              <div className="relative overflow-hidden rounded-[28px] p-[1px] bg-gradient-to-br from-indigo-400/40 via-purple-500/20 to-transparent shadow-2xl shadow-indigo-950/40">
+                <div className="relative rounded-[27px] bg-gradient-to-br from-slate-950 via-indigo-950 to-purple-950/90 text-white p-6 space-y-5 overflow-hidden">
+                  {/* Ambient glow accents */}
+                  <div className="absolute -top-16 -right-10 w-48 h-48 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
+                  <div className="absolute -bottom-20 -left-12 w-52 h-52 bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
+                  <div className="absolute inset-0 opacity-[0.15] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.4) 1px, transparent 0)', backgroundSize: '22px 22px' }} />
+
+                  {/* Header */}
+                  <div className="relative flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="relative p-3 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-amber-300 shadow-lg shadow-indigo-500/40">
+                        <Moon className="h-5 w-5" />
+                        <span className="absolute inset-0 rounded-2xl ring-1 ring-white/20" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-bold text-white tracking-tight">Cloud Task Generator</h3>
+                        <p className="text-[11px] text-indigo-300/90 font-medium">Serverless Google Cloud Cron</p>
+                      </div>
+                    </div>
+                    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 text-[10px] font-bold border border-emerald-400/30 shadow-sm shadow-emerald-500/20">
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
+                      </span>
+                      Active
+                    </span>
+                  </div>
+
+                  {/* Countdown widget */}
+                  <div className="relative rounded-2xl bg-black/30 border border-white/10 backdrop-blur-sm p-4 flex items-center justify-between gap-3">
+                    <div>
+                      <span className="text-slate-400 block text-[10px] uppercase tracking-[0.15em] font-bold">Time to Next Trigger</span>
+                      <span className="font-bold text-white text-sm mt-0.5 block">{formatHourLabel(nightlyTriggerHour)}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 font-mono">
+                      {[
+                        { v: countdown.hours, l: 'HRS' },
+                        { v: countdown.minutes, l: 'MIN' },
+                        { v: countdown.seconds, l: 'SEC' },
+                      ].map((seg, i) => (
+                        <React.Fragment key={seg.l}>
+                          {i > 0 && <span className="text-amber-300/60 font-black text-lg pb-3">:</span>}
+                          <div className="flex flex-col items-center">
+                            <span className="text-lg font-black text-amber-300 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-white/10 shadow-inner min-w-[2.4rem] text-center tabular-nums">
+                              {String(seg.v).padStart(2, '0')}
+                            </span>
+                            <span className="text-[8px] text-slate-500 font-bold tracking-wider mt-1">{seg.l}</span>
+                          </div>
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <div className="relative space-y-2.5 text-xs leading-relaxed">
+                    <div className="flex items-center gap-2 text-slate-200">
+                      <span className="text-amber-300">🕒</span>
+                      <span><strong className="text-white font-semibold">Schedule:</strong> Every day at <span className="text-amber-300 font-bold">{formatHourLabel(nightlyTriggerHour)}</span></span>
+                    </div>
+                    <p className="text-[11px] text-slate-400/90 leading-relaxed">
+                      Google Apps Script automatically evaluates the <span className="text-indigo-300 font-semibold">Working Calendar</span> &amp; <span className="text-indigo-300 font-semibold">Unique Templates</span> and inserts the new day's tasks directly into Supabase &amp; Sheets without needing any browser open.
+                    </p>
+                  </div>
+
+                  {nightlyTriggerStatus && (
+                    <div className="relative p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-400/30 text-emerald-300 text-xs flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0" />
+                      <span>{nightlyTriggerStatus}</span>
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="relative pt-1 flex flex-col sm:flex-row gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => handleSetupNightlyTrigger(selectedTimingHour)}
+                      disabled={isSettingUpNightlyTrigger}
+                      className="flex-1 flex items-center justify-center gap-2 px-3.5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-50 ring-1 ring-white/10"
+                    >
+                      <Zap className={`h-3.5 w-3.5 ${isSettingUpNightlyTrigger ? 'animate-spin' : ''}`} />
+                      <span>{isSettingUpNightlyTrigger ? 'Configuring Cloud...' : '🌙 Refresh Cloud Trigger'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRunNightlyCloudTest}
+                      disabled={isRunningNightlyTest}
+                      className="flex items-center justify-center gap-2 px-3.5 py-2.5 bg-white/5 hover:bg-white/15 text-white text-xs font-semibold rounded-xl border border-white/15 backdrop-blur-sm transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      <Play className={`h-3.5 w-3.5 fill-current ${isRunningNightlyTest ? 'animate-spin' : ''}`} />
+                      <span>{isRunningNightlyTest ? 'Testing...' : 'Test Cloud Run'}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Toggle 1: Auto run on login */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="text-xs">
-                  <span className="font-bold text-slate-700 block">Auto-Check on Admin Login</span>
-                  <span className="text-slate-400 text-[11px] leading-tight block">
-                    Silently triggers pending daily tasks whenever an Admin logs into the dashboard.
-                  </span>
+              {/* Automated Schedule Card */}
+              <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-5">
+                <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+                  <div className="p-2 rounded-xl bg-purple-50 text-purple-600">
+                    <Clock className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800">Background Automation</h3>
+                    <p className="text-[11px] text-slate-500">Auto-generation preferences</p>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleToggleAutoLogin(!autoTriggerOnLogin)}
-                  className={`w-11 h-6 shrink-0 rounded-full transition-colors relative ${
-                    autoTriggerOnLogin ? 'bg-indigo-600' : 'bg-slate-200'
-                  }`}
-                >
-                  <div
-                    className={`w-4 h-4 bg-white rounded-full shadow-md transition-transform absolute top-1 ${
-                      autoTriggerOnLogin ? 'translate-x-6' : 'translate-x-1'
+
+                {/* Toggle 1: Auto run on login */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="text-xs">
+                    <span className="font-bold text-slate-700 block">Auto-Check on Admin Login</span>
+                    <span className="text-slate-400 text-[11px] leading-tight block">
+                      Silently triggers pending daily tasks whenever an Admin logs into the dashboard.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleAutoLogin(!autoTriggerOnLogin)}
+                    className={`w-11 h-6 shrink-0 rounded-full transition-colors relative ${
+                      autoTriggerOnLogin ? 'bg-indigo-600' : 'bg-slate-200'
                     }`}
-                  />
-                </button>
+                  >
+                    <div
+                      className={`w-4 h-4 bg-white rounded-full shadow-md transition-transform absolute top-1 ${
+                        autoTriggerOnLogin ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Select: Background polling interval */}
+                <div className="pt-2 border-t border-slate-100 space-y-2">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Active Session Trigger Check
+                  </label>
+                  <select
+                    value={autoScheduleInterval}
+                    onChange={(e) => handleChangeInterval(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none"
+                  >
+                    <option value="15">Every 15 Minutes</option>
+                    <option value="30">Every 30 Minutes</option>
+                    <option value="60">Every 1 Hour (Recommended)</option>
+                    <option value="120">Every 2 Hours</option>
+                    <option value="0">Disabled (Manual Only)</option>
+                  </select>
+                  <p className="text-[10px] text-slate-400">
+                    Automatically runs in the background while dashboard remains open.
+                  </p>
+                </div>
               </div>
 
-              {/* Select: Background polling interval */}
-              <div className="pt-2 border-t border-slate-100 space-y-2">
-                <label className="block text-xs font-bold text-slate-700">
-                  Active Session Trigger Check
-                </label>
-                <select
-                  value={autoScheduleInterval}
-                  onChange={(e) => handleChangeInterval(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none"
-                >
-                  <option value="15">Every 15 Minutes</option>
-                  <option value="30">Every 30 Minutes</option>
-                  <option value="60">Every 1 Hour (Recommended)</option>
-                  <option value="120">Every 2 Hours</option>
-                  <option value="0">Disabled (Manual Only)</option>
-                </select>
-                <p className="text-[10px] text-slate-400">
-                  Automatically runs in the background while dashboard remains open.
-                </p>
+              {/* Quick Summary Card */}
+              <div className="rounded-3xl p-6 shadow-xl border border-slate-700/80 space-y-4 text-white" style={{ backgroundColor: '#0f172a' }}>
+                <div className="flex items-center gap-2 text-sky-400 text-xs font-bold uppercase tracking-wider">
+                  <ShieldCheck className="h-4.5 w-4.5 text-emerald-400" />
+                  <span className="font-extrabold tracking-wide">Trigger Engine Rules</span>
+                </div>
+                <div className="space-y-3 text-xs text-slate-200">
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-emerald-400 font-bold text-sm leading-none">✓</span>
+                    <span className="text-slate-200 leading-relaxed"><strong className="text-white font-semibold">Daily:</strong> Evaluates once per working day.</span>
+                  </div>
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-emerald-400 font-bold text-sm leading-none">✓</span>
+                    <span className="text-slate-200 leading-relaxed"><strong className="text-white font-semibold">Weekly:</strong> Triggers 7 days after last date.</span>
+                  </div>
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-emerald-400 font-bold text-sm leading-none">✓</span>
+                    <span className="text-slate-200 leading-relaxed"><strong className="text-white font-semibold">Monthly:</strong> Triggers on the corresponding day next month.</span>
+                  </div>
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-emerald-400 font-bold text-sm leading-none">✓</span>
+                    <span className="text-slate-200 leading-relaxed"><strong className="text-white font-semibold">Duplicate Safe:</strong> Automatically updates <code className="text-sky-300 bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">Last Date</code> in <code className="text-sky-300 bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">Unique</code> table to prevent re-inserts.</span>
+                  </div>
+                </div>
               </div>
+
             </div>
-
-            {/* Quick Summary Card */}
-            <div className="rounded-3xl p-6 shadow-xl border border-slate-700/80 space-y-4 text-white" style={{ backgroundColor: '#0f172a' }}>
-              <div className="flex items-center gap-2 text-sky-400 text-xs font-bold uppercase tracking-wider">
-                <ShieldCheck className="h-4.5 w-4.5 text-emerald-400" />
-                <span className="font-extrabold tracking-wide">Trigger Engine Rules</span>
-              </div>
-              <div className="space-y-3 text-xs text-slate-200">
-                <div className="flex items-start gap-2.5">
-                  <span className="text-emerald-400 font-bold text-sm leading-none">✓</span>
-                  <span className="text-slate-200 leading-relaxed"><strong className="text-white font-semibold">Daily:</strong> Evaluates once per working day.</span>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <span className="text-emerald-400 font-bold text-sm leading-none">✓</span>
-                  <span className="text-slate-200 leading-relaxed"><strong className="text-white font-semibold">Weekly:</strong> Triggers 7 days after last date.</span>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <span className="text-emerald-400 font-bold text-sm leading-none">✓</span>
-                  <span className="text-slate-200 leading-relaxed"><strong className="text-white font-semibold">Monthly:</strong> Triggers on the corresponding day next month.</span>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <span className="text-emerald-400 font-bold text-sm leading-none">✓</span>
-                  <span className="text-slate-200 leading-relaxed"><strong className="text-white font-semibold">Duplicate Safe:</strong> Automatically updates <code className="text-sky-300 bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">Last Date</code> in <code className="text-sky-300 bg-slate-800 px-1.5 py-0.5 rounded text-[11px]">Unique</code> table to prevent re-inserts.</span>
-                </div>
-              </div>
-            </div>
-
           </div>
-        </div>
+        )}
 
         {/* ========================================================================= */}
         {/* BOTTOM SECTION: RECURRING CHECKLIST TEMPLATES INSPECTOR                    */}
         {/* ========================================================================= */}
-        <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-4 sm:p-5 md:p-6 shadow-sm space-y-4">
-          {/* Tier 1: Header (Title & Subtitle on Left, Action Buttons on Right) */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-            <div className="flex items-start sm:items-center gap-3">
-              <div className="p-2.5 rounded-2xl bg-indigo-50 text-indigo-600 shadow-2xs shrink-0">
-                <ListChecks className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-base sm:text-lg font-extrabold text-slate-800">
-                    Recurring Checklist Templates Inspector
-                  </h2>
-                  <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 font-extrabold text-[11px]">
-                    {templates.length} Templates
-                  </span>
+        {currentTab === 'recurring-templates' && (
+          <div id="recurring-templates" className="bg-white/90 backdrop-blur-xl border border-slate-200/80 rounded-3xl p-4 sm:p-5 md:p-6 shadow-sm space-y-4 scroll-mt-6">
+            {/* Tier 1: Header (Title & Subtitle on Left, Action Buttons on Right) */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-indigo-50 text-indigo-600 shadow-2xs shrink-0">
+                  <ListChecks className="h-5 w-5" />
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Inspect all recurring task definitions from 'Unique' table and their current generation status
-                </p>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-base sm:text-lg font-extrabold text-slate-800">
+                      Recurring Checklist Templates Inspector
+                    </h2>
+                    <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 font-extrabold text-[11px]">
+                      {templates.length} Templates
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Inspect all recurring task definitions from 'Unique' table and their current generation status
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons: Sync Dates & Refresh Data */}
+              <div className="flex items-center gap-2.5 shrink-0 self-stretch sm:self-auto">
+                <button
+                  type="button"
+                  onClick={handleSyncAllLastDates}
+                  disabled={isSyncingDates || loading}
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95 whitespace-nowrap"
+                  title="Sync Last Date of all templates that already exist in Checklist for selected date"
+                >
+                  <Zap className={`h-3.5 w-3.5 ${isSyncingDates ? 'animate-spin text-emerald-600' : 'text-emerald-600'}`} />
+                  <span>{isSyncingDates ? 'Syncing...' : '⚡ Sync Dates'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={loadData}
+                  disabled={loading}
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95 whitespace-nowrap"
+                  title="Refresh Templates live from Supabase"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-indigo-600' : 'text-indigo-600'}`} />
+                  <span>Refresh Data</span>
+                </button>
               </div>
             </div>
 
-            {/* Action Buttons: Sync Dates & Refresh Data */}
-            <div className="flex items-center gap-2.5 shrink-0 self-stretch sm:self-auto">
-              <button
-                type="button"
-                onClick={handleSyncAllLastDates}
-                disabled={isSyncingDates || loading}
-                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95 whitespace-nowrap"
-                title="Sync Last Date of all templates that already exist in Checklist for selected date"
-              >
-                <Zap className={`h-3.5 w-3.5 ${isSyncingDates ? 'animate-spin text-emerald-600' : 'text-emerald-600'}`} />
-                <span>{isSyncingDates ? 'Syncing...' : '⚡ Sync Dates'}</span>
-              </button>
+            {/* Tier 2: Dedicated Filter & Search Bar */}
+            <div className="p-3 bg-slate-50/90 rounded-2xl border border-slate-200/80 shadow-2xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-12 gap-2.5 items-center">
+                {/* Search: spans 4 cols on large screens */}
+                <div className="relative sm:col-span-2 md:col-span-3 xl:col-span-4">
+                  <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search template / assignee / ID..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-8 pr-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 font-medium shadow-2xs"
+                  />
+                </div>
 
-              <button
-                type="button"
-                onClick={loadData}
-                disabled={loading}
-                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95 whitespace-nowrap"
-                title="Refresh Templates live from Supabase"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-indigo-600' : 'text-indigo-600'}`} />
-                <span>Refresh Data</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Tier 2: Dedicated Filter & Search Bar */}
-          <div className="p-3 bg-slate-50/90 rounded-2xl border border-slate-200/80 shadow-2xs">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-12 gap-2.5 items-center">
-              {/* Search: spans 4 cols on large screens */}
-              <div className="relative sm:col-span-2 md:col-span-3 xl:col-span-4">
-                <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search template / assignee / ID..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-700 font-medium shadow-2xs"
-                />
-              </div>
-
-              {/* Task ID Sort Order: spans 2 cols */}
-              <div className="xl:col-span-2">
-                <select
-                  value={taskIdSortOrder}
-                  onChange={(e) => setTaskIdSortOrder(e.target.value)}
-                  className="w-full px-2.5 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-bold text-indigo-700 focus:outline-none cursor-pointer shadow-2xs"
-                  title="Sort by Task ID"
-                >
-                  <option value="ASC">🔢 ID: 1 → 999 (Asc)</option>
-                  <option value="DESC">🔢 ID: 999 → 1 (Desc)</option>
-                </select>
-              </div>
-
-              {/* Assignee Filter: spans 2 cols */}
-              <div className="xl:col-span-2">
-                <select
-                  value={assigneeFilter}
-                  onChange={(e) => setAssigneeFilter(e.target.value)}
-                  className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer truncate shadow-2xs"
-                  title="Filter by Assignee / Person Name"
-                >
-                  <option value="ALL">👤 All Assignees ({uniqueAssignees.length})</option>
-                  {uniqueAssignees.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Frequency Filter: spans 2 cols */}
-              <div className="xl:col-span-2">
-                <select
-                  value={freqFilter}
-                  onChange={(e) => setFreqFilter(e.target.value)}
-                  className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer shadow-2xs"
-                >
-                  <option value="ALL">All Frequencies</option>
-                  <option value="DAILY">Daily</option>
-                  <option value="WEEKLY">Weekly</option>
-                  <option value="FORTNIGHTLY">Fortnightly</option>
-                  <option value="MONTHLY">Monthly</option>
-                  <option value="QUARTERLY">Quarterly</option>
-                  <option value="HALF-YEARLY">Half-Yearly</option>
-                  <option value="YEARLY">Yearly</option>
-                </select>
-              </div>
-
-              {/* Status Filter: spans 2 cols */}
-              <div className="xl:col-span-2">
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer shadow-2xs"
-                >
-                  <option value="ALL">All Statuses</option>
-                  <option value="DUE">⚡ Due Today</option>
-                  <option value="UP_TO_DATE">✅ Up to Date</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Top Horizontal Scrollbar */}
-          <div
-            ref={topScrollRef}
-            onScroll={handleTopScroll}
-            className="overflow-x-auto overflow-y-hidden border border-indigo-200/70 rounded-xl bg-slate-50/80 p-0.5 shadow-inner"
-            style={{ height: '14px' }}
-            title="Scroll horizontally across table columns"
-          >
-            <div style={{ width: `${Math.max(tableScrollWidth, 1000)}px`, height: '1px' }} />
-          </div>
-
-          {/* Table */}
-          <div 
-            ref={tableScrollRef}
-            onScroll={handleTableScroll}
-            className="overflow-x-auto rounded-2xl border border-slate-200"
-          >
-            <table className="w-full text-left text-xs text-slate-600 min-w-[950px]">
-              <thead className="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200 select-none">
-                <tr>
-                  <th 
-                    className="py-2.5 px-3 w-16 cursor-pointer hover:bg-indigo-50/70 transition-colors select-none group"
-                    onClick={() => setTaskIdSortOrder(prev => prev === 'ASC' ? 'DESC' : 'ASC')}
-                    title="Click to toggle Task ID sort order (Ascending / Descending)"
+                {/* Task ID Sort Order: spans 2 cols */}
+                <div className="xl:col-span-2">
+                  <select
+                    value={taskIdSortOrder}
+                    onChange={(e) => setTaskIdSortOrder(e.target.value)}
+                    className="w-full px-2.5 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-bold text-indigo-700 focus:outline-none cursor-pointer shadow-2xs"
+                    title="Sort by Task ID"
                   >
-                    <div className="flex items-center gap-1 text-indigo-700 font-extrabold whitespace-nowrap">
-                      <span>ID</span>
-                      {taskIdSortOrder === 'ASC' ? (
-                        <ArrowUp className="h-3 w-3 text-indigo-600 group-hover:scale-110 transition-transform" />
-                      ) : (
-                        <ArrowDown className="h-3 w-3 text-indigo-600 group-hover:scale-110 transition-transform" />
-                      )}
-                    </div>
-                  </th>
-                  <th className="py-2.5 px-2.5 w-24 whitespace-nowrap">Department</th>
-                  <th className="py-2.5 px-2.5 w-24 whitespace-nowrap">Assignee</th>
-                  <th className="py-2.5 px-2.5">Task Description</th>
-                  <th className="py-2.5 px-2 w-20 text-center whitespace-nowrap">Frequency</th>
-                  <th className="py-2.5 px-2.5 w-32 whitespace-nowrap">Last Generated</th>
-                  <th className="py-2.5 px-2 w-28 text-center whitespace-nowrap" title="Status for Selected Date">Status</th>
-                  <th className="py-2.5 px-3 w-28 text-center whitespace-nowrap" title="Actions (Run Trigger / Delete Template)">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium">
-                {filteredTemplates.length === 0 ? (
+                    <option value="ASC">🔢 ID: 1 → 999 (Asc)</option>
+                    <option value="DESC">🔢 ID: 999 → 1 (Desc)</option>
+                  </select>
+                </div>
+
+                {/* Assignee Filter: spans 2 cols */}
+                <div className="xl:col-span-2">
+                  <select
+                    value={assigneeFilter}
+                    onChange={(e) => setAssigneeFilter(e.target.value)}
+                    className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer truncate shadow-2xs"
+                    title="Filter by Assignee / Person Name"
+                  >
+                    <option value="ALL">👤 All Assignees ({uniqueAssignees.length})</option>
+                    {uniqueAssignees.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Frequency Filter: spans 2 cols */}
+                <div className="xl:col-span-2">
+                  <select
+                    value={freqFilter}
+                    onChange={(e) => setFreqFilter(e.target.value)}
+                    className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer shadow-2xs"
+                  >
+                    <option value="ALL">All Frequencies</option>
+                    <option value="DAILY">Daily</option>
+                    <option value="WEEKLY">Weekly</option>
+                    <option value="FORTNIGHTLY">Fortnightly</option>
+                    <option value="MONTHLY">Monthly</option>
+                    <option value="QUARTERLY">Quarterly</option>
+                    <option value="HALF-YEARLY">Half-Yearly</option>
+                    <option value="YEARLY">Yearly</option>
+                  </select>
+                </div>
+
+                {/* Status Filter: spans 2 cols */}
+                <div className="xl:col-span-2">
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer shadow-2xs"
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="DUE">⚡ Due Today</option>
+                    <option value="UP_TO_DATE">✅ Up to Date</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Top Horizontal Scrollbar */}
+            <div
+              ref={topScrollRef}
+              onScroll={handleTopScroll}
+              className="overflow-x-auto overflow-y-hidden border border-indigo-200/70 rounded-xl bg-slate-50/80 p-0.5 shadow-inner"
+              style={{ height: '14px' }}
+              title="Scroll horizontally across table columns"
+            >
+              <div style={{ width: `${Math.max(tableScrollWidth, 1000)}px`, height: '1px' }} />
+            </div>
+
+            {/* Table */}
+            <div 
+              ref={tableScrollRef}
+              onScroll={handleTableScroll}
+              className="overflow-x-auto rounded-2xl border border-slate-200"
+            >
+              <table className="w-full text-left text-xs text-slate-600 min-w-[950px]">
+                <thead className="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200 select-none">
                   <tr>
-                    <td colSpan="8" className="py-8 text-center text-slate-400 italic">
-                      No matching recurring templates found
-                    </td>
+                    <th 
+                      className="py-2.5 px-3 w-16 cursor-pointer hover:bg-indigo-50/70 transition-colors select-none group"
+                      onClick={() => setTaskIdSortOrder(prev => prev === 'ASC' ? 'DESC' : 'ASC')}
+                      title="Click to toggle Task ID sort order (Ascending / Descending)"
+                    >
+                      <div className="flex items-center gap-1 text-indigo-700 font-extrabold whitespace-nowrap">
+                        <span>ID</span>
+                        {taskIdSortOrder === 'ASC' ? (
+                          <ArrowUp className="h-3 w-3 text-indigo-600 group-hover:scale-110 transition-transform" />
+                        ) : (
+                          <ArrowDown className="h-3 w-3 text-indigo-600 group-hover:scale-110 transition-transform" />
+                        )}
+                      </div>
+                    </th>
+                    <th className="py-2.5 px-2.5 w-24 whitespace-nowrap">Department</th>
+                    <th className="py-2.5 px-2.5 w-24 whitespace-nowrap">Assignee</th>
+                    <th className="py-2.5 px-2.5">Task Description</th>
+                    <th className="py-2.5 px-2 w-20 text-center whitespace-nowrap">Frequency</th>
+                    <th className="py-2.5 px-2.5 w-32 whitespace-nowrap">Last Generated</th>
+                    <th className="py-2.5 px-2 w-28 text-center whitespace-nowrap" title="Status for Selected Date">Status</th>
+                    <th className="py-2.5 px-3 w-28 text-center whitespace-nowrap" title="Actions (Run Trigger / Delete Template)">Actions</th>
                   </tr>
-                ) : (
-                  filteredTemplates.map((t) => {
-                    const target = selectedDate ? new Date(selectedDate) : todayObj;
-                    const dueInfo = isTemplateDue(t, target);
-                    const freq = (t.Frequency || t.Freq || 'daily').toUpperCase();
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {filteredTemplates.length === 0 ? (
+                    <tr>
+                      <td colSpan="8" className="py-8 text-center text-slate-400 italic">
+                        No matching recurring templates found
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredTemplates.map((t) => {
+                      const target = selectedDate ? new Date(selectedDate) : todayObj;
+                      const dueInfo = isTemplateDue(t, target);
+                      const freq = (t.Frequency || t.Freq || 'daily').toUpperCase();
 
-                    return (
-                      <tr key={t['Task ID']} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">#{t['Task ID']}</td>
-                        <td className="py-2.5 px-2.5 whitespace-nowrap">
-                          <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-semibold text-[11px] inline-block max-w-[110px] truncate">
-                            {t.Department || 'General'}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-2.5 font-semibold text-slate-800 whitespace-nowrap">{t.Name || '-'}</td>
-                        <td className="py-2.5 px-2.5 max-w-[200px] xl:max-w-[280px] truncate text-slate-700" title={t['Task Description'] || t['Tast Descriptions']}>
-                          {t['Task Description'] || t['Tast Descriptions'] || '-'}
-                        </td>
-                        <td className="py-2.5 px-2 text-center whitespace-nowrap">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            freq === 'DAILY' ? 'bg-blue-100 text-blue-700' :
-                            freq === 'WEEKLY' ? 'bg-purple-100 text-purple-700' :
-                            freq === 'MONTHLY' ? 'bg-amber-100 text-amber-700' :
-                            'bg-slate-100 text-slate-700'
-                          }`}>
-                            {freq}
-                          </span>
-                        </td>
-                        {/* Editable Last Generated Date Button */}
-                        <td className="py-2 px-2.5 whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => setEditingTemplateForDate(t)}
-                            className="group/editdate inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 transition-all text-left shadow-2xs cursor-pointer active:scale-95"
-                            title="Click to open interactive calendar & set date"
-                          >
-                            <Calendar className="h-3.5 w-3.5 text-indigo-500 group-hover/editdate:scale-110 transition-transform" />
-                            <span className={t['Last Date'] ? "text-slate-800 font-bold text-xs font-mono" : "text-slate-400 italic font-medium text-xs"}>
-                              {t['Last Date'] || 'Never'}
+                      return (
+                        <tr key={t['Task ID']} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-2.5 px-3 font-bold text-slate-800 whitespace-nowrap">#{t['Task ID']}</td>
+                          <td className="py-2.5 px-2.5 whitespace-nowrap">
+                            <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-semibold text-[11px] inline-block max-w-[110px] truncate">
+                              {t.Department || 'General'}
                             </span>
-                            <Edit3 className="h-3 w-3 text-slate-400 group-hover/editdate:text-indigo-600 transition-colors opacity-40 group-hover/editdate:opacity-100" />
-                          </button>
-                        </td>
-                        <td className="py-2.5 px-2 text-center whitespace-nowrap">
-                          {dueInfo.isDue ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px]">
-                              <Zap className="h-3 w-3" /> Due Now
+                          </td>
+                          <td className="py-2.5 px-2.5 font-semibold text-slate-800 whitespace-nowrap">{t.Name || '-'}</td>
+                          <td className="py-2.5 px-2.5 max-w-[200px] xl:max-w-[280px] truncate text-slate-700" title={t['Task Description'] || t['Tast Descriptions']}>
+                            {t['Task Description'] || t['Tast Descriptions'] || '-'}
+                          </td>
+                          <td className="py-2.5 px-2 text-center whitespace-nowrap">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              freq === 'DAILY' ? 'bg-blue-100 text-blue-700' :
+                              freq === 'WEEKLY' ? 'bg-purple-100 text-purple-700' :
+                              freq === 'MONTHLY' ? 'bg-amber-100 text-amber-700' :
+                              'bg-slate-100 text-slate-700'
+                            }`}>
+                              {freq}
                             </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
-                              <CheckCircle2 className="h-3 w-3" /> Up to Date
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                          <div className="inline-flex items-center gap-1.5 justify-center">
-                            {/* Instant Trigger Run Button */}
+                          </td>
+                          {/* Editable Last Generated Date Button */}
+                          <td className="py-2 px-2.5 whitespace-nowrap">
                             <button
-                              onClick={() => handleExecuteTrigger(t['Task ID'])}
-                              disabled={isRunningTrigger || runningRowId === t['Task ID'] || deletingTemplateId === t['Task ID']}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-50 shadow-xs cursor-pointer active:scale-95"
-                              title="Generate a task right now for this template"
+                              type="button"
+                              onClick={() => setEditingTemplateForDate(t)}
+                              className="group/editdate inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 transition-all text-left shadow-2xs cursor-pointer active:scale-95"
+                              title="Click to open interactive calendar & set date"
                             >
-                              {runningRowId === t['Task ID'] ? (
-                                <RefreshCw className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <Play className="h-3 w-3 fill-current" />
-                              )}
-                              <span>{runningRowId === t['Task ID'] ? 'Running...' : 'Run'}</span>
+                              <Calendar className="h-3.5 w-3.5 text-indigo-500 group-hover/editdate:scale-110 transition-transform" />
+                              <span className={t['Last Date'] ? "text-slate-800 font-bold text-xs font-mono" : "text-slate-400 italic font-medium text-xs"}>
+                                {t['Last Date'] || 'Never'}
+                              </span>
+                              <Edit3 className="h-3 w-3 text-slate-400 group-hover/editdate:text-indigo-600 transition-colors opacity-40 group-hover/editdate:opacity-100" />
                             </button>
+                          </td>
+                          <td className="py-2.5 px-2 text-center whitespace-nowrap">
+                            {dueInfo.isDue ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px]">
+                                <Zap className="h-3 w-3" /> Due Now
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                                <CheckCircle2 className="h-3 w-3" /> Up to Date
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                            <div className="inline-flex items-center gap-1.5 justify-center">
+                              {/* Instant Trigger Run Button */}
+                              <button
+                                onClick={() => handleExecuteTrigger(t['Task ID'])}
+                                disabled={isRunningTrigger || runningRowId === t['Task ID'] || deletingTemplateId === t['Task ID']}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-50 shadow-xs cursor-pointer active:scale-95"
+                                title="Generate a task right now for this template"
+                              >
+                                {runningRowId === t['Task ID'] ? (
+                                 <RefreshCw className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Play className="h-3 w-3 fill-current" />
+                                )}
+                                <span>{runningRowId === t['Task ID'] ? 'Running...' : 'Run'}</span>
+                              </button>
 
-                            {/* Delete Recurring Template Button */}
-                            <button
-                              onClick={() => handleDeleteTemplate(t)}
-                              disabled={deletingTemplateId === t['Task ID'] || isRunningTrigger}
-                              className="p-1 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 transition-all disabled:opacity-50 cursor-pointer active:scale-95 border border-rose-200/60"
-                              title={`Delete Template #${t['Task ID']} permanently`}
-                            >
-                              {deletingTemplateId === t['Task ID'] ? (
-                                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-3.5 w-3.5" />
-                              )}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                              {/* Delete Recurring Template Button */}
+                              <button
+                                onClick={() => handleDeleteTemplate(t)}
+                                disabled={deletingTemplateId === t['Task ID'] || isRunningTrigger}
+                                className="p-1 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 transition-all disabled:opacity-50 cursor-pointer active:scale-95 border border-rose-200/60"
+                                title={`Delete Template #${t['Task ID']} permanently`}
+                              >
+                                {deletingTemplateId === t['Task ID'] ? (
+                                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Interactive Custom Date Picker Modal */}
         <TemplateDatePickerModal

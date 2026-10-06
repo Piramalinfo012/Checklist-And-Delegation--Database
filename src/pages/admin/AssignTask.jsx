@@ -4,6 +4,7 @@ import AdminLayout from "../../components/layout/AdminLayout";
 import { supabase } from "../../lib/supabaseClient";
 import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 import { getNextTaskId, formatDateToDDMMYYYY } from "../../utils/taskTriggerEngine";
+import { sendDelegationTaskSMS } from "../../utils/whatsappService";
 
 const TaskTypePopup = ({ isOpen, onClose, onSelect }) => {
   if (!isOpen) return null;
@@ -1044,6 +1045,15 @@ export default function AssignTask() {
 
         const { error: insErr } = await supabase.from('Delegation').insert(tasksToInsert);
         if (insErr) throw insErr;
+
+        // Automatically trigger Maytapi WhatsApp SMS to assigned users
+        try {
+          for (const t of tasksToInsert) {
+            sendDelegationTaskSMS(t);
+          }
+        } catch (smsErr) {
+          console.warn("Automated WhatsApp SMS error:", smsErr);
+        }
 
       } else {
         // Checklist task: Insert into Unique recurring template table with guaranteed unique Task ID

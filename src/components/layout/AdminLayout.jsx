@@ -41,6 +41,7 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
   const navigate = useNavigate()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isDataSubmenuOpen, setIsDataSubmenuOpen] = useState(false)
+  const [isSettingsSubmenuOpen, setIsSettingsSubmenuOpen] = useState(false)
   const [isLicenseModalOpen, setIsLicenseModalOpen] = useState(false)
   const [username, setUsername] = useState("")
   const [userRole, setUserRole] = useState("")
@@ -280,8 +281,17 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
       href: "/dashboard/settings",
       label: "Settings",
       icon: Settings,
-      active: location.pathname === "/dashboard/settings",
-      showFor: ["admin"] // Only show for admin
+      active: location.pathname.startsWith("/dashboard/settings"),
+      showFor: ["admin"],
+      submenu: true,
+      submenuType: "settings",
+      submenuItems: [
+        { name: "User ID Directory & Management", link: "/dashboard/settings#user-management" },
+        { name: "Manual Data Dump to Google Sheet", link: "/dashboard/settings#manual-data-dump" },
+        { name: "Task Generation Trigger Console", link: "/dashboard/settings#trigger-console" },
+        { name: "Recurring Checklist Templates Inspector", link: "/dashboard/settings#recurring-templates" },
+        { name: "Whatsapp Service", link: "/dashboard/settings/whatsapp-sms" },
+      ]
     },
   ]
 
@@ -349,48 +359,99 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
               <li key={route.label}>
                 {route.submenu ? (
                   <div>
-                    <button
-                      onClick={() => setIsDataSubmenuOpen(!isDataSubmenuOpen)}
-                      className={`flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 ${route.active
-                        ? "bg-slate-800 text-white shadow-md"
-                        : "text-slate-600 hover:bg-white/60"
-                        }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <route.icon
-                          className={`h-4 w-4 ${route.active ? "text-white" : "text-slate-400"
+                    {route.submenuType === "settings" ? (
+                      <>
+                        <button
+                          onClick={() => setIsSettingsSubmenuOpen(!isSettingsSubmenuOpen)}
+                          className={`flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 ${route.active
+                            ? "bg-slate-800 text-white shadow-md"
+                            : "text-slate-600 hover:bg-white/60"
                             }`}
-                        />
-                        {route.label}
-                      </div>
-                      {isDataSubmenuOpen ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
-                    </button>
-                    {isDataSubmenuOpen && (
-                      <ul className="mt-1.5 ml-4 space-y-1 border-l-2 border-slate-200/60 pl-3">
-                        {accessibleDepartments.map((category) => (
-                          <li key={category.id}>
-                            <Link
-                              to={
-                                category.link ||
-                                `/dashboard/data/${category.id}`
-                              }
-                              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-200 ${location.pathname ===
-                                (category.link ||
-                                  `/dashboard/data/${category.id}`)
-                                ? "bg-slate-700 text-white font-medium shadow-sm"
-                                : "text-slate-500 hover:bg-white/50 hover:text-slate-700"
+                        >
+                          <div className="flex items-center gap-3">
+                            <route.icon
+                              className={`h-4 w-4 ${route.active ? "text-white" : "text-slate-400"
                                 }`}
-                              onClick={() => setIsMobileMenuOpen(false)}
-                            >
-                              {category.name}
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
+                            />
+                            {route.label}
+                          </div>
+                          {isSettingsSubmenuOpen ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </button>
+                        {isSettingsSubmenuOpen && (
+                          <ul className="mt-1.5 ml-4 space-y-1 border-l-2 border-slate-200/60 pl-3">
+                            {(route.submenuItems || []).map((subItem) => {
+                              const isSubActive = (location.pathname + location.hash === subItem.link) || 
+                                (subItem.link.includes('#') && location.pathname === '/dashboard/settings' && location.hash === `#${subItem.link.split('#')[1]}`) ||
+                                (!subItem.link.includes('#') && location.pathname === subItem.link);
+
+                              return (
+                                <li key={subItem.link}>
+                                  <Link
+                                    to={subItem.link}
+                                    className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition-all duration-200 ${isSubActive
+                                      ? "bg-slate-700 text-white font-bold shadow-sm"
+                                      : "text-slate-500 hover:bg-white/50 hover:text-slate-700"
+                                      }`}
+                                    onClick={() => setIsMobileMenuOpen(false)}
+                                  >
+                                    {subItem.name}
+                                  </Link>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => setIsDataSubmenuOpen(!isDataSubmenuOpen)}
+                          className={`flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 ${route.active
+                            ? "bg-slate-800 text-white shadow-md"
+                            : "text-slate-600 hover:bg-white/60"
+                            }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <route.icon
+                              className={`h-4 w-4 ${route.active ? "text-white" : "text-slate-400"
+                                }`}
+                            />
+                            {route.label}
+                          </div>
+                          {isDataSubmenuOpen ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </button>
+                        {isDataSubmenuOpen && (
+                          <ul className="mt-1.5 ml-4 space-y-1 border-l-2 border-slate-200/60 pl-3">
+                            {accessibleDepartments.map((category) => (
+                              <li key={category.id}>
+                                <Link
+                                  to={
+                                    category.link ||
+                                    `/dashboard/data/${category.id}`
+                                  }
+                                  className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-200 ${location.pathname ===
+                                    (category.link ||
+                                      `/dashboard/data/${category.id}`)
+                                    ? "bg-slate-700 text-white font-medium shadow-sm"
+                                    : "text-slate-500 hover:bg-white/50 hover:text-slate-700"
+                                    }`}
+                                  onClick={() => setIsMobileMenuOpen(false)}
+                                >
+                                  {category.name}
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </>
                     )}
                   </div>
                 ) : (
@@ -540,50 +601,101 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
                   <li key={route.label}>
                     {route.submenu ? (
                       <div>
-                        <button
-                          onClick={() =>
-                            setIsDataSubmenuOpen(!isDataSubmenuOpen)
-                          }
-                          className={`flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 ${route.active
-                            ? "bg-slate-800 text-white shadow-md"
-                            : "text-slate-600 hover:bg-white/60"
-                            }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <route.icon
-                              className={`h-4 w-4 ${route.active ? "text-white" : "text-slate-400"
+                        {route.submenuType === "settings" ? (
+                          <>
+                            <button
+                              onClick={() => setIsSettingsSubmenuOpen(!isSettingsSubmenuOpen)}
+                              className={`flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 ${route.active
+                                ? "bg-slate-800 text-white shadow-md"
+                                : "text-slate-600 hover:bg-white/60"
                                 }`}
-                            />
-                            {route.label}
-                          </div>
-                          {isDataSubmenuOpen ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4" />
-                          )}
-                        </button>
-                        {isDataSubmenuOpen && (
-                          <ul className="mt-1.5 ml-4 space-y-1 border-l-2 border-slate-200/60 pl-3">
-                            {accessibleDepartments.map((category) => (
-                              <li key={category.id}>
-                                <Link
-                                  to={
-                                    category.link ||
-                                    `/dashboard/data/${category.id}`
-                                  }
-                                  className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-200 ${location.pathname ===
-                                    (category.link ||
-                                      `/dashboard/data/${category.id}`)
-                                    ? "bg-slate-700 text-white font-medium shadow-sm"
-                                    : "text-slate-500 hover:bg-white/50 hover:text-slate-700"
+                            >
+                              <div className="flex items-center gap-3">
+                                <route.icon
+                                  className={`h-4 w-4 ${route.active ? "text-white" : "text-slate-400"
                                     }`}
-                                  onClick={() => setIsMobileMenuOpen(false)}
-                                >
-                                  {category.name}
-                                </Link>
-                              </li>
-                            ))}
-                          </ul>
+                                />
+                                {route.label}
+                              </div>
+                              {isSettingsSubmenuOpen ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                            </button>
+                            {isSettingsSubmenuOpen && (
+                              <ul className="mt-1.5 ml-4 space-y-1 border-l-2 border-slate-200/60 pl-3">
+                                {(route.submenuItems || []).map((subItem) => {
+                                  const isSubActive = (location.pathname + location.hash === subItem.link) || 
+                                    (subItem.link.includes('#') && location.pathname === '/dashboard/settings' && location.hash === `#${subItem.link.split('#')[1]}`) ||
+                                    (!subItem.link.includes('#') && location.pathname === subItem.link);
+
+                                  return (
+                                    <li key={subItem.link}>
+                                      <Link
+                                        to={subItem.link}
+                                        className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs transition-all duration-200 ${isSubActive
+                                          ? "bg-slate-700 text-white font-bold shadow-sm"
+                                          : "text-slate-500 hover:bg-white/50 hover:text-slate-700"
+                                          }`}
+                                        onClick={() => setIsMobileMenuOpen(false)}
+                                      >
+                                        {subItem.name}
+                                      </Link>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() =>
+                                setIsDataSubmenuOpen(!isDataSubmenuOpen)
+                              }
+                              className={`flex w-full items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 ${route.active
+                                ? "bg-slate-800 text-white shadow-md"
+                                : "text-slate-600 hover:bg-white/60"
+                                }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <route.icon
+                                  className={`h-4 w-4 ${route.active ? "text-white" : "text-slate-400"
+                                    }`}
+                                />
+                                {route.label}
+                              </div>
+                              {isDataSubmenuOpen ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                            </button>
+                            {isDataSubmenuOpen && (
+                              <ul className="mt-1.5 ml-4 space-y-1 border-l-2 border-slate-200/60 pl-3">
+                                {accessibleDepartments.map((category) => (
+                                  <li key={category.id}>
+                                    <Link
+                                      to={
+                                        category.link ||
+                                        `/dashboard/data/${category.id}`
+                                      }
+                                      className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-200 ${location.pathname ===
+                                        (category.link ||
+                                          `/dashboard/data/${category.id}`)
+                                        ? "bg-slate-700 text-white font-medium shadow-sm"
+                                        : "text-slate-500 hover:bg-white/50 hover:text-slate-700"
+                                        }`}
+                                      onClick={() => setIsMobileMenuOpen(false)}
+                                    >
+                                      {category.name}
+                                    </Link>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </>
                         )}
                       </div>
                     ) : (

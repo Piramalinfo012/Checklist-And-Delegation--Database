@@ -16,6 +16,7 @@ import QuickTask from "./pages/QuickTask"
 import TrainingVideo from "./pages/TrainingVideo"
 import MaintenancePage from "./pages/MaintenancePage"
 import AdminSettings from "./pages/admin/AdminSettings"
+import WhatsappSmsSettings from "./pages/admin/WhatsappSmsSettings"
 
 // System-wide maintenance switch: when true, every logged-in route shows the
 // maintenance page instead of its normal content. Login still works. Flip
@@ -115,6 +116,16 @@ function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={["admin"]}>
             <AdminSettings />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* WhatsApp SMS Settings & Logs Sub-Component */}
+      <Route
+        path="/dashboard/settings/whatsapp-sms"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <WhatsappSmsSettings />
           </ProtectedRoute>
         }
       />
