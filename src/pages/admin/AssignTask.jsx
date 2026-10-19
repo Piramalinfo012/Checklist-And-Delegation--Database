@@ -1074,7 +1074,13 @@ export default function AssignTask() {
           Frequency: formData.frequency,
           'Enable Reminder': formData.enableReminders ? 'Yes' : 'No',
           'Require Attatchment': formData.requireAttachment ? 'Yes' : 'No',
-          'Last Date': dateStr
+          // 'Last Date' = the last date a task instance was ACTUALLY generated from this template.
+          // Only set it when we generate the first instance right now (start date is today — handled below).
+          // For a future-dated template no instance exists yet, so leave it empty: the trigger's
+          // "Never generated before" path then produces the FIRST task on the start date for any
+          // frequency. (Previously pre-filling it with the start date made the engine treat the start
+          // date itself as "already generated today" via isSameDay() and skip that first occurrence.)
+          'Last Date': isStartingToday ? dateStr : ''
         };
 
         const { error: uErr } = await supabase.from('Unique').insert([templateRow]);
