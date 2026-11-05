@@ -1920,7 +1920,7 @@ function DelegationDataPage() {
 
                         {/* 6. Assigned User */}
                         <th className="px-4 py-3.5 text-left text-[11px] font-bold text-slate-600 uppercase tracking-wider min-w-[140px] bg-slate-50">
-                          Assigned User
+                          Done By
                         </th>
 
                         {/* 7. Given By */}
@@ -2056,14 +2056,9 @@ function DelegationDataPage() {
 
                               {/* 6. Assigned User */}
                               <td className="px-4 py-3.5 whitespace-nowrap">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-sm uppercase shrink-0">
-                                    {history["col7"] ? history["col7"].trim().charAt(0) : "U"}
-                                  </div>
-                                  <span className="text-xs font-bold text-slate-700 max-w-[120px] truncate" title={history["col7"]}>
-                                    {history["col7"] || "—"}
-                                  </span>
-                                </div>
+                                <span className="text-xs font-bold text-slate-700 max-w-[140px] truncate inline-block align-middle" title={history["col7"]}>
+                                  {history["col7"] || "—"}
+                                </span>
                               </td>
 
                               {/* 7. Given By */}
