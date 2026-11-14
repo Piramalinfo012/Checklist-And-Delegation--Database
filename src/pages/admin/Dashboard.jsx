@@ -1239,8 +1239,8 @@ export default function AdminDashboard() {
             itemStyle={{ fontWeight: 500 }}
           />
           <Legend wrapperStyle={{ paddingTop: '20px' }} iconType="circle" />
-          <Bar dataKey="completed" name="Completed" fill="url(#barCompletedGrad)" maxBarSize={24} radius={[6, 6, 0, 0]} minPointSize={3} />
-          <Bar dataKey="pending" name="Pending" fill="url(#barPendingGrad)" maxBarSize={24} radius={[6, 6, 0, 0]} minPointSize={3} />
+          <Bar dataKey="completed" name="Completed" fill="url(#barCompletedGrad)" maxBarSize={24} radius={[6, 6, 0, 0]} minPointSize={3} isAnimationActive={false} />
+          <Bar dataKey="pending" name="Pending" fill="url(#barPendingGrad)" maxBarSize={24} radius={[6, 6, 0, 0]} minPointSize={3} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
     )
@@ -1271,6 +1271,7 @@ export default function AdminDashboard() {
             dataKey="value"
             stroke="none"
             cornerRadius={10}
+            isAnimationActive={false}
           >
             {departmentData.pieChartData.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={`url(#pieGrad${index % COLORS.length})`} />
