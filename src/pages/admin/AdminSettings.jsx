@@ -1930,6 +1930,53 @@ export default function AdminSettings() {
     }
   };
 
+  // Export the currently shown (filtered/searched) Recurring Checklist Templates to an Excel (.xls) file
+  const handleExportTemplatesExcel = () => {
+    try {
+      if (!filteredTemplates || filteredTemplates.length === 0) {
+        alert('No templates to export.');
+        return;
+      }
+
+      const esc = (v) => String(v ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      const headers = ['ID', 'Department', 'Assignee', 'Task Description', 'Frequency', 'Task Start Date', 'Last Generated', 'Given By', 'Enable Reminder', 'Require Attachment'];
+
+      const bodyRows = filteredTemplates.map((t) => {
+        const cells = [
+          t['Task ID'] ?? t.id ?? '',
+          t['Department'] ?? '',
+          t['Name'] ?? '',
+          t['Task Description'] ?? t['Tast Descriptions'] ?? '',
+          t['Frequency'] ?? t['Freq'] ?? '',
+          t['Task Start date'] ?? t['Task Start Date'] ?? '',
+          t['Last Date'] ?? '',
+          t['Give By'] ?? t['Given By'] ?? '',
+          t['Enable Reminder'] ?? t['Enable Reminders'] ?? '',
+          t['Require Attatchment'] ?? t['Require Attachment'] ?? ''
+        ];
+        return `<tr>${cells.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`;
+      }).join('');
+
+      const headHtml = `<tr>${headers.map((h) => `<th>${esc(h)}</th>`).join('')}</tr>`;
+      const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body><table border="1"><thead>${headHtml}</thead><tbody>${bodyRows}</tbody></table></body></html>`;
+
+      const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `Recurring_Templates_${todayFormatted.replace(/\//g, '-')}.xls`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Excel Export Error:', err);
+      alert(`Export failed: ${err.message || err}`);
+    }
+  };
+
   // Computed Values
   const todayObj = new Date();
   const todayFormatted = formatDateToDDMMYYYY(todayObj);
@@ -3709,8 +3756,19 @@ export default function AdminSettings() {
                 </div>
               </div>
 
-              {/* Action Buttons: Sync Dates & Refresh Data */}
+              {/* Action Buttons: Export Excel, Sync Dates & Refresh Data */}
               <div className="flex items-center gap-2.5 shrink-0 self-stretch sm:self-auto">
+                <button
+                  type="button"
+                  onClick={handleExportTemplatesExcel}
+                  disabled={loading}
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95 whitespace-nowrap"
+                  title="Export the currently shown templates to an Excel (.xls) file"
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5 text-green-600" />
+                  <span>Export Excel</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={handleSyncAllLastDates}
