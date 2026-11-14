@@ -1078,6 +1078,10 @@ export default function AdminDashboard() {
   // updates made elsewhere in the sheet show up here without a manual reload.
   useEffect(() => {
     const intervalId = setInterval(() => {
+      // Skip the background re-fetch while the tab is hidden to avoid wasted egress
+      // (nobody is looking at it). It resumes automatically on the next tick once the
+      // tab is visible again, so the viewed data stays just as fresh as before.
+      if (document.visibilityState !== 'visible') return;
       fetchDepartmentData();
     }, 15000);
     return () => clearInterval(intervalId);
