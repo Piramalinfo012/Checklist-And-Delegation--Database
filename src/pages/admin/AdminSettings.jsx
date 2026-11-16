@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import AdminLayout from '../../components/layout/AdminLayout';
 import { supabase } from '../../lib/supabaseClient';
-import { uploadImageToCloudinary } from '../../lib/cloudinary';
+import { uploadImageToCloudinary, getOptimizedPhotoUrl } from '../../lib/cloudinary';
 import { 
   runTaskGenerationTrigger, 
   formatDateToDDMMYYYY, 
@@ -848,7 +848,7 @@ export default function AdminSettings() {
       let photoUrl = userFormData.Photo;
       if (userPhotoFile) {
         try {
-          photoUrl = await uploadImageToCloudinary(userPhotoFile);
+          photoUrl = await uploadImageToCloudinary(userPhotoFile, { profilePhoto: true });
         } catch (uploadErr) {
           console.warn('Cloudinary upload warning, using placeholder fallback:', uploadErr);
           photoUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(trimmedUsername)}&background=6366f1&color=fff&bold=true`;
@@ -2587,7 +2587,9 @@ export default function AdminSettings() {
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-3">
                               <img
-                                src={avatarUrl}
+                                src={getOptimizedPhotoUrl(avatarUrl)}
+                                loading="lazy"
+                                decoding="async"
                                 alt={user.Username}
                                 className="h-8 w-8 rounded-full object-cover border border-slate-200 shadow-sm"
                                 onError={(e) => {
@@ -2739,7 +2741,7 @@ export default function AdminSettings() {
                   <div className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-slate-200 rounded-2xl hover:border-emerald-500 transition-colors">
                     <div className="relative group cursor-pointer">
                       <img
-                        src={userPhotoPreview || `https://ui-avatars.com/api/?name=${encodeURIComponent(userFormData.Username || 'U')}&background=6366f1&color=fff&bold=true`}
+                        src={getOptimizedPhotoUrl(userPhotoPreview) || `https://ui-avatars.com/api/?name=${encodeURIComponent(userFormData.Username || 'U')}&background=6366f1&color=fff&bold=true`}
                         alt="Preview"
                         className="h-16 w-16 rounded-full object-cover border-2 border-emerald-500/30"
                       />

@@ -6,7 +6,7 @@ import { CheckSquare, ClipboardList, Home, LogOut, Menu, Database, ChevronDown, 
 import sbhLogo from '../../assets/logo.png'
 import { motion, AnimatePresence } from "framer-motion"
 import { supabase } from "../../lib/supabaseClient"
-import { uploadImageToCloudinary } from "../../lib/cloudinary"
+import { uploadImageToCloudinary, getOptimizedPhotoUrl } from "../../lib/cloudinary"
 
 const TypingText = ({ text }) => {
   const [displayed, setDisplayed] = useState("");
@@ -175,7 +175,7 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
       }
 
       // 1. Upload photo directly to Cloudinary
-      const uploadedUrl = await uploadImageToCloudinary(selectedFile);
+      const uploadedUrl = await uploadImageToCloudinary(selectedFile, { profilePhoto: true });
       if (!uploadedUrl) {
         throw new Error('Could not get image URL from Cloudinary upload');
       }
@@ -834,11 +834,13 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
               <span className="sr-only">Close</span>
             </button>
             <img
-              src={userProfileImage}
+              src={getOptimizedPhotoUrl(userProfileImage, 512)}
               alt="Profile"
               className="w-full aspect-square rounded-2xl object-cover shadow-2xl border-4 border-white"
               style={{ backgroundColor: "#f3f4f6" }}
               onError={(e) => {
+                if (e.currentTarget.dataset.fallbackSrc === userProfileImage) return;
+                e.currentTarget.dataset.fallbackSrc = userProfileImage;
                 const originalUrl = userProfileImage
                   .replace("thumbnail?", "uc?export=view&")
                   .replace("&sz=w150", "");
@@ -971,13 +973,15 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
               {userProfileImage ? (
                 <div className="relative">
                   <img
-                    src={userProfileImage}
+                    src={getOptimizedPhotoUrl(userProfileImage)}
                     alt="Profile"
                     className="h-9 w-9 sm:h-11 sm:w-11 rounded-full object-cover border-2 border-white cursor-pointer transition-all duration-200 group-hover:brightness-75 shadow-md"
                     style={{ backgroundColor: "#f3f4f6", objectPosition: "center" }}
                     onClick={() => setShowImageViewModal(true)}
                     title="View profile photo"
                     onError={(e) => {
+                      if (e.currentTarget.dataset.fallbackSrc === userProfileImage) return;
+                      e.currentTarget.dataset.fallbackSrc = userProfileImage;
                       const originalUrl = userProfileImage
                         .replace("thumbnail?", "uc?export=view&")
                         .replace("&sz=w150", "");

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { BarChart3, CheckCircle2, Clock, ListTodo, Users, AlertTriangle, Filter, ChevronDown, Check, Search } from 'lucide-react'
+import { getOptimizedPhotoUrl } from "../../lib/cloudinary"
 import AdminLayout from "../../components/layout/AdminLayout.jsx"
 import { supabase } from "../../lib/supabaseClient"
 import {
@@ -1347,7 +1348,9 @@ export default function AdminDashboard() {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-3">
                       <img
-                        src={avatarSrc}
+                        src={getOptimizedPhotoUrl(avatarSrc)}
+                        loading="lazy"
+                        decoding="async"
                         alt={staff.name}
                         className="h-10 w-10 rounded-full object-cover border border-slate-200 shadow-sm flex-shrink-0"
                         onError={(e) => {
@@ -2155,7 +2158,9 @@ export default function AdminDashboard() {
                                 </div>
                               ) : null}
                               <img
-                                src={avatarSrc}
+                                src={getOptimizedPhotoUrl(avatarSrc)}
+                                loading="lazy"
+                                decoding="async"
                                 alt={staff.name}
                                 className={`h-11 w-11 shrink-0 rounded-full object-cover ring-2 ${s.ring} shadow-sm`}
                                 onError={(e) => {
